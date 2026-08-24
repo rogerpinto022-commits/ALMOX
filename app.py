@@ -5,11 +5,24 @@ from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 import os
 
-st.set_page_config(page_title="Almox Final Fix", layout="wide")
+st.set_page_config(page_title="Almox Final", layout="wide")
 FUSO = ZoneInfo("America/Sao_Paulo")
 ARQ_DADOS = "dados.csv"
 ARQ_MOV = "mov.csv"
 ARQ_EMAILS = "emails.csv"
+
+# === FORÇA RECRIAR MOV.CSV SE ESTIVER VELHO ===
+if os.path.exists(ARQ_MOV):
+    try:
+        df_old = pd.read_csv(ARQ_MOV)
+        # se não tem as colunas novas, apaga
+        if "DATA_FAB" not in df_old.columns or "IDX" not in df_old.columns:
+            os.remove(ARQ_MOV)
+    except:
+        try:
+            os.remove(ARQ_MOV)
+        except:
+            pass
 
 if not os.path.exists(ARQ_DADOS):
     pd.DataFrame([
@@ -17,21 +30,11 @@ if not os.path.exists(ARQ_DADOS):
         {"ID":1,"NOME":"CIMENTO","UNIDADE":"SC","LOCAL":"OFICINA","SALDO":0,"VALIDADE_PADRAO":90},
     ]).to_csv(ARQ_DADOS,index=False)
 
-if not os.path.exists(ARQ_EMAILS):
-    pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin"}]).to_csv(ARQ_EMAILS,index=False)
-
-# SE O MOV EXISTE MAS ESTA VELHO, APAGA E RECRIA
-if os.path.exists(ARQ_MOV):
-    try:
-        df_test = pd.read_csv(ARQ_MOV)
-        if "DATA_FAB" not in df_test.columns or "VALIDADE" not in df_test.columns or "IDX" not in df_test.columns:
-            os.remove(ARQ_MOV)
-    except:
-        try: os.remove(ARQ_MOV)
-        except: pass
-
 if not os.path.exists(ARQ_MOV):
     pd.DataFrame(columns=["IDX","DATA_HORA","DATA_FAB","VALIDADE","DIAS_VALIDADE","STATUS_VAL","LOTE","TOTAL","UNIDADE","LOCAL","ID_MAT","NOME_MAT","RESPONSAVEL"]).to_csv(ARQ_MOV,index=False)
+
+if not os.path.exists(ARQ_EMAILS):
+    pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin"}]).to_csv(ARQ_EMAILS,index=False)
 
 if "logado" not in st.session_state: st.session_state.logado=False
 if not st.session_state.logado:
@@ -94,40 +97,40 @@ if st.button(f"SALVAR - {status}", type="primary", use_container_width=True):
     pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
     st.rerun()
 
-# GRAFICOS VALIDADE COM FILTRO - BLINDADO
+# GRAFICOS VALIDADE COM FILTRO
 st.divider()
 st.header("📅 VALIDADE - VENCIDOS E A VENCER")
 
 if not st.session_state.mov:
-    st.warning("Sem lotes. Lance 1 lote para ver os graficos.")
+    st.warning("Sem lotes ainda. Lance 1 lote com FAB e VALIDADE para ver os 2 graficos abaixo.")
 else:
     df_mov=pd.DataFrame(st.session_state.mov)
-    # BLINDAGEM CONTRA ARQUIVO VELHO
-    if "DATA_FAB" not in df_mov.columns or "VALIDADE" not in df_mov.columns:
-        st.error("Seu mov.csv antigo esta sem DATA_FAB. Apague o mov.csv no GitHub e de Reboot. O app vai recriar.")
-    else:
-        df_mov["VAL_DT"]=pd.to_datetime(df_mov["VALIDADE"], format="%d/%m/%Y", errors='coerce')
-        df_mov["FAB_DT"]=pd.to_datetime(df_mov["DATA_FAB"], format="%d/%m/%Y", errors='coerce')
-        df_mov["DIAS_REST"]=(df_mov["VAL_DT"]-pd.Timestamp(hoje)).dt.days
-        def stt(d):
-            if pd.isna(d): return "SEM"
-            if d<0: return "VENCIDO"
-            if d<=30: return "A VENCER 30d"
-            if d<=90: return "A VENCER 90d"
-            return "OK"
-        df_mov["STATUS_ATUAL"]=df_mov["DIAS_REST"].apply(stt)
+    df_mov["VAL_DT"]=pd.to_datetime(df_mov["VALIDADE"], format="%d/%m/%Y", errors='coerce')
+    df_mov["FAB_DT"]=pd.to_datetime(df_mov["DATA_FAB"], format="%d/%m/%Y", errors='coerce')
+    df_mov["DIAS_REST"]=(df_mov["VAL_DT"]-pd.Timestamp(hoje)).dt.days
+    def stt(d):
+        if pd.isna(d): return "SEM"
+        if d<0: return "VENCIDO"
+        if d<=30: return "A VENCER 30d"
+        if d<=90: return "A VENCER 90d"
+        return "OK"
+    df_mov["STATUS_ATUAL"]=df_mov["DIAS_REST"].apply(stt)
 
-        lista=sorted(df_mov["NOME_MAT"].dropna().unique().tolist())
-        sel=st.multiselect("SELECIONE OS MATERIAIS PARA MOSTRAR NO GRAFICO:", options=lista, default=lista)
+    lista=sorted(df_mov["NOME_MAT"].dropna().unique().tolist())
+    sel=st.multiselect("SELECIONE OS MATERIAIS PARA MOSTRAR NO GRAFICO:", options=lista, default=lista)
 
-        df_f=df_mov[df_mov["NOME_MAT"].isin(sel)] if sel else df_mov
+    df_f=df_mov[df_mov["NOME_MAT"].isin(sel)] if sel else df_mov
 
-        c1,c2,c3,c4=st.columns(4)
-        c1.metric("VENCIDOS", len(df_f[df_f["STATUS_ATUAL"]=="VENCIDO"]))
-        c2.metric("30d", len(df_f[df_f["STATUS_ATUAL"]=="A VENCER 30d"]))
-        c3.metric("90d", len(df_f[df_f["STATUS_ATUAL"]=="A VENCER 90d"]))
-        c4.metric("OK", len(df_f[df_f["STATUS_ATUAL"]=="OK"]))
+    c1,c2,c3,c4=st.columns(4)
+    c1.metric("VENCIDOS", len(df_f[df_f["STATUS_ATUAL"]=="VENCIDO"]))
+    c2.metric("30d", len(df_f[df_f["STATUS_ATUAL"]=="A VENCER 30d"]))
+    c3.metric("90d", len(df_f[df_f["STATUS_ATUAL"]=="A VENCER 90d"]))
+    c4.metric("OK", len(df_f[df_f["STATUS_ATUAL"]=="OK"]))
 
-        st.plotly_chart(px.bar(df_f, x="NOME_MAT", color="STATUS_ATUAL", title="Vencidos e a Vencer", color_discrete_map={"VENCIDO":"red","A VENCER 30d":"orange","A VENCER 90d":"gold","OK":"green"}), use_container_width=True)
-        st.plotly_chart(px.scatter(df_f, x="FAB_DT", y="VAL_DT", color="STATUS_ATUAL", size="TOTAL", hover_data=["LOTE","DIAS_REST","NOME_MAT"], title="Fab vs Validade"), use_container_width=True)
-        st.dataframe(df_f.sort_values("VAL_DT")[["IDX","NOME_MAT","DATA_FAB","VALIDADE","DIAS_REST","STATUS_ATUAL","LOTE","TOTAL","LOCAL"]], use_container_width=True)
+    st.subheader("Grafico 2 - Vencidos e a Vencer")
+    st.plotly_chart(px.bar(df_f, x="NOME_MAT", color="STATUS_ATUAL", title="Vencidos e a Vencer - Filtrado", color_discrete_map={"VENCIDO":"red","A VENCER 30d":"orange","A VENCER 90d":"gold","OK":"green"}), use_container_width=True)
+
+    st.subheader("Grafico 3 - Fabricacao vs Vencimento")
+    st.plotly_chart(px.scatter(df_f, x="FAB_DT", y="VAL_DT", color="STATUS_ATUAL", size="TOTAL", hover_data=["LOTE","DIAS_REST","NOME_MAT"], title="Fab vs Validade - Filtrado"), use_container_width=True)
+
+    st.dataframe(df_f.sort_values("VAL_DT")[["IDX","NOME_MAT","DATA_FAB","VALIDADE","DIAS_REST","STATUS_ATUAL","LOTE","TOTAL","LOCAL"]], use_container_width=True)
