@@ -54,24 +54,21 @@ hoje=date.today()
 df_forn=pd.read_csv(ARQ_FORN) if os.path.exists(ARQ_FORN) else pd.DataFrame()
 lista_forn=df_forn["NOME"].tolist() if not df_forn.empty else ["-"]
 
-# SIDEBAR - EDITAR VALIDADE PADRÃO
 with st.sidebar.expander("⏰ EDITAR VALIDADE PADRÃO POR MATERIAL", expanded=True):
     df_tmp=pd.DataFrame(st.session_state.dados).drop_duplicates("ID")[["ID","NOME","VALIDADE_PADRAO","UNIDADE","MARCA"]].sort_values("ID")
     st.dataframe(df_tmp, use_container_width=True, hide_index=True)
-    st.write("**Editar tempo de validade**")
     id_val=st.selectbox("ID material", df_tmp["ID"].tolist(), key="idval")
     linha_val=df_tmp[df_tmp["ID"]==id_val].iloc[0]
     dias_atual=int(linha_val["VALIDADE_PADRAO"])
-    novos_dias=st.number_input(f"Dias validade padrão - {linha_val['NOME']}", min_value=1, max_value=3650, value=dias_atual, step=1)
-    st.caption(f"Atual: {dias_atual} dias = {dias_atual/30:.1f} meses")
+    novos_dias=st.number_input(f"Dias validade - {linha_val['NOME']}", min_value=1, max_value=3650, value=dias_atual, step=1)
     if st.button("💾 Salvar validade padrão"):
         for d in st.session_state.dados:
             if d["ID"]==id_val:
                 d["VALIDADE_PADRAO"]=novos_dias
         pd.DataFrame(st.session_state.dados).to_csv(ARQ_DADOS,index=False)
-        st.success(f"{linha_val['NOME']} agora vale {novos_dias} dias"); st.rerun()
+        st.success(f"{linha_val['NOME']} agora {novos_dias} dias"); st.rerun()
 
-with st.sidebar.expander("✏️ EDITAR VALIDADE DE LOTE JÁ LANÇADO", expanded=False):
+with st.sidebar.expander("✏️ EDITAR VALIDADE DE LOTE", expanded=False):
     if st.session_state.mov:
         df_m=pd.DataFrame(st.session_state.mov)
         idx_edit=st.selectbox("IDX do lote", df_m["IDX"].tolist())
@@ -95,7 +92,6 @@ with st.sidebar.expander("✏️ EDITAR VALIDADE DE LOTE JÁ LANÇADO", expanded
 
 if st.sidebar.button("Sair"): st.session_state.clear(); st.rerun()
 
-# ESTOQUE
 df_est=pd.DataFrame(st.session_state.dados)
 pivot=df_est.pivot_table(index=["ID","NOME","VALIDADE_PADRAO","UNIDADE"], columns="LOCAL", values="SALDO", aggfunc="sum", fill_value=0).reset_index()
 if "BARRACÃO" not in pivot.columns: pivot["BARRACÃO"]=0
@@ -104,7 +100,6 @@ pivot["TOTAL"]=pivot["BARRACÃO"]+pivot["OFICINA"]
 st.title(f"📦 TOTAL: {pivot['TOTAL'].sum():.0f}")
 st.dataframe(pivot, use_container_width=True)
 
-# LANÇAMENTO COM VALIDADE PADRÃO AUTOMATICA
 st.divider()
 ids=sorted(list(set([d["ID"] for d in st.session_state.dados])))
 mapa={d["ID"]:(d["NOME"],d["UNIDADE"],d.get("VALIDADE_PADRAO",180)) for d in st.session_state.dados}
@@ -113,15 +108,14 @@ local_sel=st.selectbox("Local", ["BARRACÃO","OFICINA"])
 c1,c2,c3,c4,c5=st.columns(5)
 lote=c1.text_input("LOTE")
 data_fab=c2.date_input("DATA FABRICAÇÃO", value=hoje)
-# AUTO CALCULA VALIDADE PELO PADRÃO DO MATERIAL
 validade_padrao_default = data_fab + timedelta(days=int(mapa[id_sel][2]))
-validade=c3.date_input("VALIDADE (editável)", value=validade_padrao_default)
+validade=c3.date_input("VALIDADE", value=validade_padrao_default)
 qtd=c4.number_input("QTD",value=1.0)
 ent=c5.number_input("Paletes",value=1.0)
 dias_validade=(validade-data_fab).days
 dias_restantes=(validade-hoje).days
 status = "🔴 VENCIDO" if dias_restantes<0 else "🟡 A VENCER 30d" if dias_restantes<=30 else "🟠 A VENCER 90d" if dias_restantes<=90 else "🟢 OK"
-st.info(f"Padrão do material: {mapa[id_sel][2]} dias | Calculado: {dias_validade} dias | Restam: {dias_restantes} dias | {status}")
+st.info(f"Padrão: {mapa[id_sel][2]} dias | Calculado: {dias_validade} dias | Restam: {dias_restantes} dias | {status}")
 
 if st.button(f"✅ SALVAR - {status}", type="primary", use_container_width=True):
     idx_ba=next((i for i,d in enumerate(st.session_state.dados) if d["ID"]==id_sel and d["LOCAL"]=="BARRACÃO"),None)
@@ -129,14 +123,13 @@ if st.button(f"✅ SALVAR - {status}", type="primary", use_container_width=True)
     total_calc=qtd*ent
     if local_sel=="BARRACÃO": st.session_state.dados[idx_ba]["SALDO"]+=total_calc
     else: st.session_state.dados[idx_ba]["SALDO"]-=total_calc; st.session_state.dados[idx_of]["SALDO"]+=total_calc
-    novo_id=(max([m["IDX"] for m in st.session_state.mov])+1) if st.session_state.mov else 1)
+    novo_id = max([m["IDX"] for m in st.session_state.mov])+1 if st.session_state.mov else 1
     novo={"IDX":novo_id,"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S"),"DATA_FAB":data_fab.strftime("%d/%m/%Y"),"VALIDADE":validade.strftime("%d/%m/%Y"),"DIAS_VALIDADE":dias_validade,"STATUS_VAL":status,"LOTE":lote.upper(),"MARCA":"-","FORNECEDOR":"-","QTD_PALETE":qtd,"ENTRADA":ent,"TOTAL":total_calc,"UNIDADE":mapa[id_sel][1],"LOCAL":local_sel,"TIPO":"Entrada","ID_MAT":id_sel,"NOME_MAT":mapa[id_sel][0],"RESPONSAVEL":st.session_state.usuario,"OBS":status}
     st.session_state.mov.append(novo)
     pd.DataFrame(st.session_state.dados).to_csv(ARQ_DADOS,index=False)
     pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
     st.rerun()
 
-# GRAFICO VENCIDOS
 if st.session_state.mov:
     df_mov=pd.DataFrame(st.session_state.mov)
     if not df_mov.empty:
@@ -158,4 +151,4 @@ if st.session_state.mov:
         m4.metric("🟢 OK", len(df_mov[df_mov["STATUS_ATUAL"]=="🟢 OK"]))
         st.plotly_chart(px.bar(df_mov, x="NOME_MAT", color="STATUS_ATUAL", title="VENCIDOS E A VENCER POR MATERIAL", color_discrete_map={"🔴 VENCIDO":"red","🟡 A VENCER 30d":"orange","🟠 A VENCER 90d":"gold","🟢 OK":"green"}), use_container_width=True)
         st.plotly_chart(px.scatter(df_mov, x="FAB_DT", y="VAL_DT", color="STATUS_ATUAL", size="TOTAL", hover_data=["LOTE","DIAS_REST"], title="FABRICAÇÃO vs VENCIMENTO"), use_container_width=True)
-        st.dataframe(df_mov.sort_values("VAL_DT")[["IDX","NOME_MAT","DATA_FAB","VALIDADE","DIAS_REST","STATUS_ATUAL","LOTE","TOTAL","LOCAL"]], use_container_width=True)
+        st.dataframe(df_mov.sort_values("VAL_DT")[["IDX","NOME_MAT","DATA_FAB","VALIDADE","DIAS_REST","STATUS_ATUAL","LOTE","TOTAL","LOCAL"]], use_container_width=True)"LOCAL"]], use_container_width=True)
