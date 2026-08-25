@@ -12,22 +12,23 @@ ARQ_DADOS, ARQ_MOV, ARQ_EMAILS = "dados.csv","mov.csv","emails.csv"
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@700;800;900&display=swap');
 * {font-family: 'Inter', sans-serif}
-.main-title {text-align:center; font-size:30px; font-weight:800; color:#ff4500}
+.main-title {text-align:center; font-size:34px; font-weight:900; color:#ff4500; letter-spacing:1px}
 .sub-title {text-align:center; font-size:13px; color:#888; margin-top:-8px; margin-bottom:12px}
-.card {background:white; border-radius:16px; padding:16px; box-shadow:0 4px 12px rgba(0,0,0,0.08); border:1px solid #eee; text-align:center}
-.card-red {background: linear-gradient(135deg,#ff4d4d,#cc0000); color:white; border-radius:16px; padding:16px; text-align:center}
-.card-orange {background: linear-gradient(135deg,#ff9800,#f57c00); color:white; border-radius:16px; padding:16px; text-align:center}
-.card-yellow {background: linear-gradient(135deg,#ffeb3b,#fbc02d); color:#333; border-radius:16px; padding:16px; text-align:center}
-.card-green {background: linear-gradient(135deg,#00e676,#00c853); color:white; border-radius:16px; padding:16px; text-align:center}
-.card-dark {background: linear-gradient(135deg,#263238,#37474f); color:white; border-radius:16px; padding:16px; text-align:center}
-.metric-big {font-size:26px; font-weight:800}
-.metric-label {font-size:11px; opacity:0.9; text-transform:uppercase; letter-spacing:1px}
+.card {background:white; border-radius:18px; padding:20px; box-shadow:0 6px 18px rgba(0,0,0,0.12); border:1px solid #eee; text-align:center}
+.card-red {background: linear-gradient(135deg,#ff4d4d,#b71c1c); color:white; border-radius:18px; padding:22px; text-align:center; box-shadow:0 6px 18px rgba(183,28,28,0.4)}
+.card-orange {background: linear-gradient(135deg,#ff9800,#e65100); color:white; border-radius:18px; padding:22px; text-align:center; box-shadow:0 6px 18px rgba(230,81,0,0.4)}
+.card-yellow {background: linear-gradient(135deg,#ffeb3b,#f9a825); color:#212121; border-radius:18px; padding:22px; text-align:center; box-shadow:0 6px 18px rgba(249,168,37,0.4)}
+.card-green {background: linear-gradient(135deg,#00e676,#1b5e20); color:white; border-radius:18px; padding:22px; text-align:center; box-shadow:0 6px 18px rgba(27,94,32,0.4)}
+.card-dark {background: linear-gradient(135deg,#37474f,#111); color:white; border-radius:18px; padding:22px; text-align:center; box-shadow:0 6px 18px rgba(0,0,0,0.5)}
+.metric-big {font-size:38px; font-weight:900; line-height:1}
+.metric-label {font-size:12px; font-weight:700; opacity:0.95; text-transform:uppercase; letter-spacing:1.2px; margin-bottom:6px}
+.big-number {font-size:22px; font-weight:800}
 </style>
 """, unsafe_allow_html=True)
 
-# SAFE MODE - NÃO APAGA SEUS DADOS JA LANÇADOS
+# SAFE - NAO APAGA SEUS DADOS
 if not os.path.exists(ARQ_DADOS):
     pd.DataFrame([{"ID":1,"NOME":"PASTA FRIA","UNIDADE":"KG","MARCA":"MORGAN","LOCAL":"BARRACAO","SALDO":0,"VALIDADE_PADRAO":180,"FORNECEDOR":"REFRATARIOS"}]).to_csv(ARQ_DADOS,index=False)
 if not os.path.exists(ARQ_MOV):
@@ -53,7 +54,7 @@ if not st.session_state.logado:
     st.stop()
 
 agora=datetime.now(FUSO); hoje=date.today()
-st.markdown('<div class="main-title">🔥 REFORMA DE FORNOS - MATERIAIS REFRATÁRIOS 🔥</div><div class="sub-title">SAFE MODE - Seus dados preservados • Total sem marca</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-title">🔥 REFORMA DE FORNOS - MATERIAIS REFRATÁRIOS 🔥</div><div class="sub-title">Visual Profissional • Números Grandes • Total sem Marca</div>', unsafe_allow_html=True)
 st.sidebar.caption(f"{st.session_state.usuario}")
 if st.sidebar.button("Sair"): st.session_state.clear(); st.rerun()
 for d in st.session_state.dados:
@@ -75,30 +76,30 @@ if menu=="📊 Dashboard":
     a30_total = df_mov[df_mov["STATUS_ATUAL"]=="A VENCER 30d"]["TOTAL"].sum() if not df_mov.empty else 0
     itens = df_est["NOME"].nunique() if not df_est.empty else 0
     c1,c2,c3,c4=st.columns(4)
-    c1.markdown(f'<div class="card-dark"><div class="metric-label">Total Geral (sem marca)</div><div class="metric-big">{total_geral:.0f}</div></div>', unsafe_allow_html=True)
+    c1.markdown(f'<div class="card-dark"><div class="metric-label">Total Geral</div><div class="metric-big">{total_geral:.0f}</div></div>', unsafe_allow_html=True)
     c2.markdown(f'<div class="card-red"><div class="metric-label">Vencido</div><div class="metric-big">{venc_total:.0f}</div></div>', unsafe_allow_html=True)
     c3.markdown(f'<div class="card-orange"><div class="metric-label">Vence 30 dias</div><div class="metric-big">{a30_total:.0f}</div></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="card"><div class="metric-label">Tipos Materiais</div><div class="metric-big" style="color:#333">{itens}</div></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="card"><div class="metric-label">Tipos</div><div class="metric-big" style="color:#111; font-size:38px">{itens}</div></div>', unsafe_allow_html=True)
     st.write("")
     if not df_mov.empty:
         df_total_mat = df_mov.groupby("NOME_MAT")["TOTAL"].sum().reset_index().sort_values("TOTAL", ascending=False)
-        st.markdown("### 📦 Total por Material (marca ignorada)")
+        st.markdown("### 📦 TOTAL POR MATERIAL - SEM MARCA")
         st.dataframe(df_total_mat, use_container_width=True, hide_index=True)
         col1,col2=st.columns([2,1])
         with col1:
             df_g=df_mov.groupby("STATUS_ATUAL")["TOTAL"].sum().reset_index()
             fig=px.bar(df_g, x="STATUS_ATUAL", y="TOTAL", color="STATUS_ATUAL", text="TOTAL", color_discrete_map={"VENCIDO":"#d50000","A VENCER 30d":"#ff6d00","A VENCER 90d":"#ffd600","OK":"#00c853"})
-            fig.update_traces(texttemplate='%{text:.0f}', textposition='outside', textfont_size=14)
-            fig.update_layout(showlegend=False, height=350, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
+            fig.update_traces(texttemplate='<b>%{text:.0f}</b>', textposition='outside', textfont=dict(size=20, color='black'))
+            fig.update_layout(showlegend=False, height=380, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', font=dict(size=14))
             st.plotly_chart(fig, use_container_width=True)
         with col2:
-            fig2=px.pie(df_g, names="STATUS_ATUAL", values="TOTAL", hole=0.6, color="STATUS_ATUAL", color_discrete_map={"VENCIDO":"#d50000","A VENCER 30d":"#ff6d00","A VENCER 90d":"#ffd600","OK":"#00c853"})
-            fig2.update_traces(textinfo='percent', textfont_size=12)
-            fig2.update_layout(height=350)
+            fig2=px.pie(df_g, names="STATUS_ATUAL", values="TOTAL", hole=0.55, color="STATUS_ATUAL", color_discrete_map={"VENCIDO":"#d50000","A VENCER 30d":"#ff6d00","A VENCER 90d":"#ffd600","OK":"#00c853"})
+            fig2.update_traces(textinfo='percent+label', textfont_size=13, textposition='inside')
+            fig2.update_layout(height=380, showlegend=False)
             st.plotly_chart(fig2, use_container_width=True)
 
 elif menu=="📦 Estoque":
-    st.subheader("Estoque - Total por Material (marca ignorada)")
+    st.subheader("Estoque - Total sem Marca")
     if df_est.empty: st.info("Sem estoque")
     else:
         pivot_local = df_est.groupby(["NOME","LOCAL"])["SALDO"].sum().unstack(fill_value=0).reset_index()
@@ -116,7 +117,7 @@ elif menu=="📝 Lançar":
     id_sel=st.selectbox("Material", ids, format_func=lambda x: f"{x} - {mapa.get(x,('NOVO','',90,'',''))[0]}")
     with st.container(border=True):
         cA,cB,cC=st.columns(3)
-        marca=cA.text_input("Marca (não entra no total)", value=mapa.get(id_sel,("","",""))[3])
+        marca=cA.text_input("Marca (não conta no total)", value=mapa.get(id_sel,("","",""))[3])
         fornecedor=cB.text_input("Fornecedor *", value=mapa.get(id_sel,("","","","",""))[4])
         lote=cC.text_input("Lote *")
         c1,c2,c3,c4,c5=st.columns(5)
@@ -127,7 +128,7 @@ elif menu=="📝 Lançar":
         entrada=c5.number_input("Entrada/Saída", value=1.0)
         tipo=st.segmented_control("Tipo", ["Entrada","Saida"], default="Entrada")
         total=qtd*entrada; dias=(validade-hoje).days
-        st.caption(f"Total: {total} • Vence em {dias} dias")
+        st.markdown(f"### 📦 Total: **{total:.0f}** | Vence em **{dias} dias**")
         if st.button("SALVAR", type="primary", use_container_width=True):
             idx_ba=next((i for i,d in enumerate(st.session_state.dados) if int(d["ID"])==id_sel and d["LOCAL"]=="BARRACAO"),None)
             idx_of=next((i for i,d in enumerate(st.session_state.dados) if int(d["ID"])==id_sel and d["LOCAL"]=="OFICINA"),None)
@@ -176,21 +177,20 @@ elif menu=="🔍 Materiais":
         st.write("")
         df_s=df_m.groupby("STATUS_ATUAL")["TOTAL"].sum().reset_index()
         fig=px.bar(df_s, x="STATUS_ATUAL", y="TOTAL", color="STATUS_ATUAL", text="TOTAL", color_discrete_map={"VENCIDO":"#d50000","A VENCER 30d":"#ff6d00","A VENCER 90d":"#ffd600","OK":"#00c853"})
-        fig.update_traces(texttemplate='%{text:.0f}', textposition='outside', textfont_size=16)
-        fig.update_layout(showlegend=False, height=300, title=f"{mat} - Total sem marca")
+        fig.update_traces(texttemplate='<b>%{text:.0f}</b>', textposition='outside', textfont=dict(size=22, color='black'))
+        fig.update_layout(showlegend=False, height=350, title=dict(text=f"{mat} - Total sem marca", font=dict(size=20)))
         st.plotly_chart(fig, use_container_width=True)
         if is_pasta_fria:
-            st.markdown("### 🔥 PASTA FRIA - Todas as pastas e lotes (vencidas e a vencer)")
+            st.markdown("### 🔥 PASTA FRIA - Todas as pastas e lotes")
             df_show = df_m.sort_values("VAL_DT")[["IDX","LOTE","MARCA","FORNECEDOR","DATA_FAB","VALIDADE","DIAS_REST","STATUS_ATUAL","TOTAL","LOCAL"]]
-            def color_status(val):
-                if val=="VENCIDO": return 'background-color: #ffcdd2; color: #b71c1c; font-weight: bold'
-                elif val=="A VENCER 30d": return 'background-color: #ffe0b2; color: #e65100; font-weight: bold'
-                elif val=="A VENCER 90d": return 'background-color: #fff9c4; color: #f57f17'
-                else: return 'background-color: #c8e6c9; color: #1b5e20'
-            st.dataframe(df_show.style.applymap(color_status, subset=['STATUS_ATUAL']), use_container_width=True, hide_index=True)
+            st.dataframe(df_show, use_container_width=True, hide_index=True)
             c1,c2=st.columns(2)
-            with c1: st.dataframe(df_m.groupby("MARCA")["TOTAL"].sum().reset_index(), use_container_width=True, hide_index=True)
-            with c2: st.dataframe(df_m.groupby(["LOTE","STATUS_ATUAL","VALIDADE"])["TOTAL"].sum().reset_index().sort_values("VALIDADE"), use_container_width=True, hide_index=True)
+            with c1:
+                st.markdown("**Por Marca (informativo)**")
+                st.dataframe(df_m.groupby("MARCA")["TOTAL"].sum().reset_index(), use_container_width=True, hide_index=True)
+            with c2:
+                st.markdown("**Por Lote**")
+                st.dataframe(df_m.groupby(["LOTE","STATUS_ATUAL","VALIDADE"])["TOTAL"].sum().reset_index().sort_values("VALIDADE"), use_container_width=True, hide_index=True)
         else:
             with st.expander(f"Ver {len(df_m)} lotes de {mat}"):
                 st.dataframe(df_m.sort_values("VAL_DT")[["IDX","LOTE","MARCA","VALIDADE","DIAS_REST","STATUS_ATUAL","TOTAL","LOCAL"]], use_container_width=True, hide_index=True)
