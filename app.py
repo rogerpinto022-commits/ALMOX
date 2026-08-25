@@ -1,108 +1,181 @@
 import streamlit as st
 import pandas as pd
-from datetime import date
 import os
+from datetime import date
 
 st.set_page_config(page_title="REFORMA DE FORNOS", layout="wide", page_icon="🔥")
-ARQ_CAD = "cadastro_refratario.csv"
+ARQ = "cadastro_refratario.csv"
 
+# CSS COM DESTAQUE MAXIMO E MARCA D'AGUA
 st.markdown("""
 <style>
-.watermark-container { position:fixed; top:0; left:0; width:100%; height:100%; z-index:0; pointer-events:none; display:flex; flex-wrap:wrap; justify-content:center; align-content:center; gap:90px; opacity:0.13; }
-.watermark-item { font-size:26px; font-weight:900; color:#ff4e00; transform:rotate(-30deg); border:3px solid #ff4e00; padding:6px 14px; border-radius:8px; }
-.watermark-top { position:fixed; top:8px; right:18px; font-size:12px; font-weight:900; color:#fff; z-index:9999; pointer-events:none; background:linear-gradient(90deg,#ff4e00,#ff0000); padding:6px 14px; border-radius:20px; border:2px solid #000; }
-.block-container { position:relative; z-index:1; }
-.tabela-ref { width:100%; border-collapse:collapse; font-size:13px; }
-.tabela-ref th { background:#2f3d4a; color:white; padding:8px; border:1px solid #000; text-align:center; }
-.tabela-ref td { padding:6px; border:1px solid #999; text-align:center; background:white; }
-.lote-verde { background:#7fff7f!important; font-weight:900; }
-/* GRAFICO IGUAL FOTO */
-.grafico-fundo { background:#A8C5A2; padding:20px 20px 20px 0; border-left:3px solid #000; margin-top:20px; }
-.barra { height:42px; margin:18px 0; border:1.5px solid #000; display:flex; align-items:center; padding-left:10px; font-weight:900; font-family:Arial; font-size:13px; color:#000; }
-.barra-azul { background:#6FA8DC; width:95%; }
-.barra-branca { background:#FFFFFF; }
-.barra-cinza { background:#8A8A8A; }
+.block-container { z-index:2; position:relative; }
+.wm { position:fixed; top:0; left:0; width:100%; height:100%; z-index:0; opacity:0.12; pointer-events:none; display:flex; flex-wrap:wrap; gap:80px; justify-content:center; align-content:center; }
+.wm span { font-size:30px; font-weight:900; color:#ff4e00; transform:rotate(-30deg); border:3px solid #ff4e00; padding:8px 14px; border-radius:10px; }
+.top { position:fixed; top:10px; right:15px; z-index:9999; background:linear-gradient(90deg,#ff4e00,#ff0000); color:#fff; font-weight:900; padding:6px 16px; border-radius:20px; border:2px solid #000; font-size:13px; }
+.tabela { width:100%; border-collapse:collapse; font-family:Arial Black; font-size:14px; }
+.tabela th { background:#1a252f; color:#fff; padding:12px 8px; border:2px solid #000; text-align:center; }
+.tabela td { padding:10px 6px; border:1.5px solid #000; text-align:center; background:#fff; color:#000; font-weight:700; }
+.lote { background:#00ff66!important; font-size:16px; border:3px solid #000!important; }
+.fundo-verde { background:#A8C5A2; border-left:5px solid #000; padding:25px 15px 25px 0; margin:20px 0; }
+.barra { height:52px; margin:16px 0; border:2.5px solid #000; display:flex; align-items:center; padding-left:15px; font-family:Arial Black; font-size:14px; box-shadow:3px 3px 0 #000; }
+.azul { background:#6FA8DC; }
+.branca { background:#FFFFFF; }
+.cinza { background:#8A8A8A; color:white; }
 </style>
-<div class="watermark-container">
-    <div class="watermark-item">REFORMA DE FORNOS - MATERIAIS REFRATARIOS</div>
-    <div class="watermark-item">REFORMA DE FORNOS - MATERIAIS REFRATARIOS</div>
-</div>
-<div class="watermark-top">🔥 REFORMA DE FORNOS - MATERIAIS REFRATARIOS 🔥</div>
+<div class="wm"><span>REFORMA DE FORNOS - MATERIAIS REFRATARIOS</span><span>REFORMA DE FORNOS - MATERIAIS REFRATARIOS</span><span>REFORMA DE FORNOS - MATERIAIS REFRATARIOS</span><span>REFORMA DE FORNOS - MATERIAIS REFRATARIOS</span></div>
+<div class="top">🔥 REFORMA DE FORNOS - MATERIAIS REFRATARIOS 🔥</div>
 """, unsafe_allow_html=True)
 
 def carregar():
-    lista=[]
-    if os.path.exists(ARQ_CAD):
-        try:
-            df=pd.read_csv(ARQ_CAD)
-            df.columns=[str(c).upper().strip().replace("Ç","C").replace("/","_") for c in df.columns]
-            for c in ["TOTAL","QTD_PALETE","ENTRADA"]:
-                if c in df.columns: df[c]=pd.to_numeric(df[c], errors='coerce').fillna(0)
-            if "TOTAL" in df.columns: df.loc[df["TOTAL"]==0,"TOTAL"]=df.get("QTD_PALETE",0)*df.get("ENTRADA",0)
-            lista=df.to_dict('records')
+    if not os.path.exists(ARQ): return []
+    try:
+        df = pd.read_csv(ARQ)
+        # limpa
+        df = df.fillna("")
+        return df.to_dict('records')
+    except:
+        try: os.remove(ARQ)
         except: pass
-    return lista
+        return []
 
-if 'iniciado' not in st.session_state:
-    st.session_state.cadastro=carregar()
-    st.session_state.iniciado=True
-    st.session_state.id_selecionado=None
+if 'cad' not in st.session_state:
+    st.session_state.cad = carregar()
+    st.session_state.id_sel = None
+    st.session_state.ver_tab = False
 
-st.title("🔥 REFORMA DE FORNOS")
-tab1,tab2=st.tabs(["📝 CADASTRO","📊 PRODUTO -> TODOS OS LOTES (FORMATO FOTO)"])
+st.markdown("<h1 style='text-align:center; background:linear-gradient(90deg,#000,#ff4e00); color:white; padding:20px; border-radius:15px; border:3px solid #ff4e00;'>🔥 REFORMA DE FORNOS - MATERIAIS REFRATARIOS 🔥</h1>", unsafe_allow_html=True)
 
-with tab1:
-    with st.form("cad",clear_on_submit=True):
-        c1,c2,c3=st.columns(3)
-        with c1: id_p=st.text_input("ID","1"); desc=st.text_input("DESCRICAO","CIMENTO"); marca=st.text_input("MARCA","FONDU")
-        with c2: lote=st.text_input("LOTE","99999999999"); validade=st.text_input("VALIDADE","00/00/0000"); qtd=st.number_input("QTD/PALETE",value=1250.0)
-        with c3: entrada=st.number_input("ENTRADA",value=11.0); data=st.date_input("DATA",value=date.today())
-        if st.form_submit_button("💾 SALVAR",type="primary"):
-            total=qtd*entrada
-            st.session_state.cadastro.append({"ID":str(id_p),"DESCRICAO":desc.upper(),"MARCA":marca.upper(),"LOTE":str(lote),"VALIDADE":validade,"QTD_PALETE":qtd,"ENTRADA":entrada,"TOTAL":total,"DATA":data.strftime("%d/%m/%Y")})
-            pd.DataFrame(st.session_state.cadastro).to_csv(ARQ_CAD,index=False); st.rerun()
+t1,t2 = st.tabs(["📝 CADASTRO","📊 CLIQUE NO PRODUTO -> VER TODOS OS LOTES (FORMATO FOTO)"])
 
-with tab2:
-    if not st.session_state.cadastro:
-        st.warning("Cadastre")
+with t1:
+    with st.form("f", clear_on_submit=True):
+        a,b,c = st.columns(3)
+        with a:
+            id_in = st.text_input("ID DO PRODUTO *", "1")
+            desc_in = st.text_input("DESCRIÇÃO *", "CIMENTO FONDU")
+            marca_in = st.text_input("MARCA", "FONDU")
+        with b:
+            lote_in = st.text_input("LOTE *", "9999999999")
+            val_in = st.text_input("VALIDADE", "00/00/0000")
+            qtd_in = st.number_input("QTD POR PALETE", value=1250.0, step=10.0)
+        with c:
+            ent_in = st.number_input("ENTRADA (PALETES)", value=11.0, step=1.0)
+            data_in = st.date_input("DATA", value=date.today())
+        if st.form_submit_button("💾 SALVAR LOTE", type="primary", use_container_width=True):
+            if id_in and desc_in and lote_in:
+                total = float(qtd_in) * float(ent_in)
+                st.session_state.cad.append({
+                    "ID": str(id_in).strip(),
+                    "DESCRICAO": str(desc_in).upper().strip(),
+                    "MARCA": str(marca_in).upper().strip(),
+                    "LOTE": str(lote_in).strip(),
+                    "VALIDADE": str(val_in).strip(),
+                    "QTD_PALETE": float(qtd_in),
+                    "ENTRADA": float(ent_in),
+                    "TOTAL": float(total),
+                    "DATA": data_in.strftime("%d/%m/%Y")
+                })
+                pd.DataFrame(st.session_state.cad).to_csv(ARQ, index=False)
+                st.success(f"LOTE {lote_in} SALVO!"); st.rerun()
+            else:
+                st.error("Preencha ID, DESCRIÇÃO e LOTE")
+
+    if st.session_state.cad:
+        if st.button("👁️ VER TABELA COMPLETA" if not st.session_state.ver_tab else "🙈 ESCONDER TABELA", type="secondary"):
+            st.session_state.ver_tab = not st.session_state.ver_tab
+            st.rerun()
+        if st.session_state.ver_tab:
+            html = '<table class="tabela"><tr><th>ID</th><th>DESCRIÇÃO</th><th>MARCA</th><th>LOTE</th><th>VALIDADE</th><th>QTD/PAL</th><th>ENTRADA</th><th>TOTAL</th><th>DATA</th></tr>'
+            for r in st.session_state.cad:
+                html += f"<tr><td><b>{r.get('ID','')}</b></td><td>{r.get('DESCRICAO','')}</td><td>{r.get('MARCA','')}</td><td class='lote'>{r.get('LOTE','')}</td><td><b>{r.get('VALIDADE','')}</b></td><td>{r.get('QTD_PALETE','')}</td><td>{r.get('ENTRADA','')}</td><td><b>{r.get('TOTAL','')}</b></td><td>{r.get('DATA','')}</td></tr>"
+            html += '</table>'
+            st.markdown(html, unsafe_allow_html=True)
+            st.write("")
+            for i in range(len(st.session_state.cad)-1, -1, -1):
+                r = st.session_state.cad[i]
+                c1,c2 = st.columns([4,1])
+                c1.write(f"**ID {r.get('ID')}** - {r.get('DESCRICAO')} - **LOTE {r.get('LOTE')}**")
+                if c2.button("🗑️", key=f"del_{i}_{r.get('LOTE')}"):
+                    st.session_state.cad.pop(i)
+                    if st.session_state.cad: pd.DataFrame(st.session_state.cad).to_csv(ARQ, index=False)
+                    else:
+                        if os.path.exists(ARQ): os.remove(ARQ)
+                    st.rerun()
+
+with t2:
+    if not st.session_state.cad:
+        st.warning("⚠️ Nenhum lote cadastrado. Vá na aba CADASTRO")
     else:
-        df=pd.DataFrame(st.session_state.cadastro)
-        produtos=df.drop_duplicates(subset=['ID'])[['ID','DESCRICAO']]
+        # PEGA PRODUTOS ÚNICOS SEM USAR PANDAS PERIGOSO
+        mapa_prod = {}
+        for r in st.session_state.cad:
+            idk = str(r.get('ID','?')).strip()
+            if idk not in mapa_prod:
+                mapa_prod[idk] = {"ID": idk, "DESCRICAO": r.get('DESCRICAO',''), "MARCA": r.get('MARCA',''), "QTD_LOTES":0}
+            mapa_prod[idk]["QTD_LOTES"] += 1
 
-        st.markdown("### CLIQUE NO PRODUTO:")
-        cols=st.columns(4)
-        for i,(_,r) in enumerate(produtos.iterrows()):
-            qtd_lotes=len(df[df['ID'].astype(str)==str(r['ID'])])
-            with cols[i%4]:
-                if st.button(f"ID {r['ID']} - {r['DESCRICAO']} ({qtd_lotes} LOTES)", key=f"p_{r['ID']}_{i}", use_container_width=True):
-                    st.session_state.id_selecionado=str(r['ID'])
+        st.markdown(f"### 📦 {len(mapa_prod)} PRODUTOS CADASTRADOS - CLIQUE PARA VER TODOS OS LOTES:")
 
-        if st.session_state.id_selecionado:
-            id_sel=st.session_state.id_selecionado
-            df_f=df[df['ID'].astype(str)==id_sel].copy()
-            df_f=df_f.sort_values(by='LOTE')
-
-            st.success(f"PRODUTO ID {id_sel} - {df_f.iloc[0]['DESCRICAO']} - {len(df_f)} LOTES")
-
-            # TABELA SIMPLES DOS LOTES
-            st.markdown(f"""
-            <table class="tabela-ref">
-            <tr><th>LOTE</th><th>VALIDADE</th><th>TOTAL</th></tr>
-            {''.join([f"<tr><td class='lote-verde'>{r['LOTE']}</td><td>{r['VALIDADE']}</td><td>{r['TOTAL']}</td></tr>" for _,r in df_f.iterrows()])}
-            </table>
-            """, unsafe_allow_html=True)
-
-            # GRAFICO EXATO IGUAL SUA FOTO - HTML PURO
-            st.markdown(f"<div class='grafico-fundo'>", unsafe_allow_html=True)
-            cores=[("barra-azul","95%"),("barra-branca","55%"),("barra-cinza","48%"),("barra-branca","32%")]
-            for idx, (_,r) in enumerate(df_f.iterrows()):
-                cor, larg = cores[idx % len(cores)]
-                # largura proporcional ao TOTAL para parecer validade
-                prop = 30 + (float(r['TOTAL']) / float(df_f['TOTAL'].max()) * 65) if df_f['TOTAL'].max()>0 else 50
+        cols = st.columns(3)
+        for idx, (idk, info) in enumerate(mapa_prod.items()):
+            with cols[idx % 3]:
+                # DESTAQUE VISUAL
                 st.markdown(f"""
-                <div class="barra {cor}" style="width:{prop}%;">
-                    LOTE {r['LOTE']} | VALIDADE {r['VALIDADE']} | TOTAL {r['TOTAL']:.0f}
+                <div style="border:3px solid #000; background:#fff7e6; padding:8px; border-radius:10px; text-align:center; margin-bottom:5px;">
+                <b style="font-size:18px;">ID {info['ID']}</b><br>
+                <b>{info['DESCRICAO']}</b><br>
+                <span style="background:#00ff66; padding:2px 8px; border:2px solid #000; font-weight:900;">{info['QTD_LOTES']} LOTES</span>
                 </div>
                 """, unsafe_allow_html=True)
-            st.markdown(f"</div>", unsafe_allow_html=True)
-            st.caption("Formato igual sua foto: fundo verde #A8C5A2, barra azul em cima, brancas e cinza, borda preta, risco preto na esquerda")
+                if st.button(f"VER LOTES ID {idk}", key=f"ver_{idk}_{idx}", use_container_width=True, type="primary"):
+                    st.session_state.id_sel = idk
+
+        if st.session_state.id_sel:
+            id_sel = str(st.session_state.id_sel)
+            lotes_do_produto = [r for r in st.session_state.cad if str(r.get('ID')) == id_sel]
+
+            if not lotes_do_produto:
+                st.error("Nenhum lote")
+            else:
+                desc = lotes_do_produto[0].get('DESCRICAO','')
+                st.markdown(f"""
+                <div style="background:linear-gradient(90deg,#1a252f,#2f3d4a); color:white; padding:18px; border-radius:12px; border:3px solid #ff4e00; text-align:center; margin:20px 0;">
+                <h2 style="margin:0;">🔥 PRODUTO ID {id_sel} - {desc} 🔥</h2>
+                <h3 style="margin:5px 0; color:#00ff66;">{len(lotes_do_produto)} LOTES CADASTRADOS</h3>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # TABELA SÓ DESSE PRODUTO COM DESTAQUE
+                html = '<table class="tabela"><tr><th style="background:#ff4e00;">LOTE</th><th>VALIDADE</th><th>QTD/PAL</th><th>ENTRADA</th><th>TOTAL</th><th>DATA</th></tr>'
+                for r in sorted(lotes_do_produto, key=lambda x: x.get('LOTE','')):
+                    html += f"<tr><td class='lote'>{r.get('LOTE','')}</td><td style='font-size:16px; background:#ffff00;'><b>{r.get('VALIDADE','')}</b></td><td>{r.get('QTD_PALETE','')}</td><td>{r.get('ENTRADA','')}</td><td style='font-size:16px;'><b>{r.get('TOTAL','')}</b></td><td>{r.get('DATA','')}</td></tr>"
+                html += '</table>'
+                st.markdown(html, unsafe_allow_html=True)
+
+                # GRAFICO EXATO IGUAL SUA FOTO - TODOS OS LOTES DO PRODUTO
+                st.markdown(f"""
+                <div style="background:#000; color:#00ff66; padding:10px; font-family:Arial Black; text-align:center; margin-top:25px; border:3px solid #00ff66;">
+                📊 GRAFICO FORMATO DA FOTO - TODOS OS LOTES DO PRODUTO ID {id_sel} - FUNDO VERDE
+                </div>
+                <div class="fundo-verde">
+                """, unsafe_allow_html=True)
+
+                # Calcula maior total para proporção
+                max_total = max([float(r.get('TOTAL',0)) for r in lotes_do_produto]) or 1
+
+                for i, r in enumerate(sorted(lotes_do_produto, key=lambda x: str(x.get('LOTE')))):
+                    total = float(r.get('TOTAL',0))
+                    prop = 25 + (total / max_total * 70) # 25% a 95% igual foto
+                    cor_classe = ["azul","branca","cinza","branca"][i % 4]
+
+                    st.markdown(f"""
+                    <div class="barra {cor_classe}" style="width:{prop:.1f}%;">
+                        🔥 LOTE {r.get('LOTE','')} | VALIDADE {r.get('VALIDADE','')} | {total:,.0f} KILOS | {r.get('ENTRADA','')} PALETES
+                    </div>
+                    """, unsafe_allow_html=True)
+
+                st.markdown("</div>", unsafe_allow_html=True)
+                st.info("✅ FORMATO IGUAL SUA FOTO: fundo verde #A8C5A2, barra azul comprida em cima, brancas e cinza, borda preta grossa, risco preto na esquerda. Cada barra = 1 LOTE do produto clicado")
+        else:
+            st.info("👆 CLIQUE EM UM PRODUTO ACIMA PARA VER TODOS OS LOTES DELE NO FORMATO DA FOTO")
