@@ -4,216 +4,255 @@ from datetime import date, timedelta
 import plotly.express as px
 import os
 
-st.set_page_config(page_title="Reforma de Fornos - Refratários", layout="wide", page_icon="🔥")
+st.set_page_config(page_title="REFORMA DE FORNOS", layout="wide", page_icon="🔥")
 ARQ_CAD = "cadastro_refratario.csv"
 ARQ_MOV = "movimentacao_refratario.csv"
-CAPACIDADE = 1000
 
 st.markdown("""
 <style>
-.main-header { background: linear-gradient(90deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); padding: 28px; border-radius: 15px; text-align: center; margin-bottom: 20px; }
-.main-header h1 { color: #ff6b35; font-size: 36px; font-weight: 800; margin:0; }
-.main-header h2 { color: white; font-size: 16px; margin-top:6px; opacity:0.9; }
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=swap');
+
+/* TOPO COM LED */
+.main-header {
+    background: radial-gradient(circle at top, #2a2a2a 0%, #000000 100%);
+    padding: 35px;
+    border-radius: 20px;
+    text-align: center;
+    border: 3px solid #ff4e00;
+    box-shadow: 0 0 15px #ff4e00, 0 0 30px #ff8a00, 0 0 45px rgba(255,78,0,0.5), inset 0 0 20px rgba(255,78,0,0.2);
+    position: relative;
+    overflow: hidden;
+}
+.main-header::before {
+    content: '';
+    position: absolute;
+    top: -2px; left: -2px; right: -2px; bottom: -2px;
+    background: linear-gradient(45deg, #ff4e00, #ffe600, #ff4e00, #ec0000);
+    border-radius: 20px;
+    z-index: -1;
+    animation: ledBorder 2s linear infinite;
+}
+@keyframes ledBorder {
+    0% { filter: hue-rotate(0deg); }
+    100% { filter: hue-rotate(360deg); }
+}
+.main-header h1 {
+    font-family: 'Montserrat', sans-serif;
+    color: #fff;
+    font-size: 44px;
+    font-weight: 900;
+    margin: 0;
+    text-shadow: 0 0 10px #ff4e00, 0 0 20px #ff4e00, 0 0 30px #ff0000, 3px 3px 0px #000;
+    animation: ledFlicker 1.5s infinite alternate;
+}
+@keyframes ledFlicker {
+    0% { text-shadow: 0 0 10px #ff4e00, 0 0 20px #ff4e00, 3px 3px 0px #000; }
+    100% { text-shadow: 0 0 20px #ffe600, 0 0 40px #ff4e00, 0 0 60px #ff0000, 3px 3px 0px #000; }
+}
+.main-header h2 {
+    color: #00ff88;
+    font-size: 16px;
+    font-weight: 700;
+    margin-top: 12px;
+    background: rgba(0,0,0,0.8);
+    display: inline-block;
+    padding: 8px 20px;
+    border-radius: 20px;
+    border: 1px solid #00ff88;
+    box-shadow: 0 0 10px #00ff88, inset 0 0 10px rgba(0,255,136,0.2);
+    font-family: monospace;
+    letter-spacing: 1px;
+}
+
+/* CARDS COM SOMBREADO E LED */
+.metric-box {
+    background: linear-gradient(145deg, #1a1a1a, #0a0a0a);
+    color: white;
+    padding: 22px;
+    border-radius: 16px;
+    text-align: center;
+    border: 2px solid #333;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.8), 0 0 15px rgba(255,78,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+    transition: all 0.3s;
+    position: relative;
+}
+.metric-box:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 12px 30px rgba(0,0,0,0.9), 0 0 25px #ff4e00, inset 0 1px 0 rgba(255,255,255,0.2);
+    border-color: #ff4e00;
+}
+.metric-box h3 { color: #888; margin:0; font-size: 12px; letter-spacing:2px; }
+.metric-box h2 { color: #ffe600; margin:8px 0; font-size: 32px; text-shadow: 0 0 10px #ffe600; }
+
+.card-prod {
+    background: linear-gradient(145deg, #1e1e1e, #000);
+    border-left: 6px solid #ff4e00;
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.7), 0 0 12px rgba(255,78,0,0.4);
+    color: white;
+    border-top: 1px solid #333;
+    border-right: 1px solid #333;
+    border-bottom: 1px solid #333;
+}
+
+/* LED INDICADORES */
+.led {
+    width: 14px; height: 14px; border-radius: 50%; display: inline-block; margin-right: 6px;
+    box-shadow: 0 0 8px currentColor, 0 0 15px currentColor;
+    animation: ledPulse 1s infinite alternate;
+}
+.led-green { background: #00ff88; color: #00ff88; }
+.led-red { background: #ff1744; color: #ff1744; }
+.led-yellow { background: #ffe600; color: #ffe600; }
+@keyframes ledPulse {
+    0% { opacity: 0.7; box-shadow: 0 0 5px currentColor; }
+    100% { opacity: 1; box-shadow: 0 0 15px currentColor, 0 0 25px currentColor; }
+}
+
+/* ABAS LED */
+.stTabs [data-baseweb="tab"] {
+    background: #111 !important;
+    color: #888 !important;
+    border: 2px solid #333 !important;
+    border-radius: 12px !important;
+    box-shadow: inset 0 0 10px rgba(0,0,0,0.8) !important;
+    font-weight: 800 !important;
+}
+.stTabs [aria-selected="true"] {
+    background: linear-gradient(135deg, #ff4e00, #ff0000) !important;
+    color: white !important;
+    border-color: #ffe600 !important;
+    box-shadow: 0 0 15px #ff4e00, 0 0 25px rgba(255,78,0,0.6) !important;
+    text-shadow: 0 0 8px white !important;
+}
+
+/* BOTÃO LED */
+.stButton>button[kind="primary"] {
+    background: linear-gradient(135deg, #ff4e00, #cc0000) !important;
+    border: 2px solid #000 !important;
+    font-weight: 900 !important;
+    box-shadow: 0 0 0 2px #ff4e00, 0 6px 0 #000, 0 0 20px rgba(255,78,0,0.6) !important;
+    border-radius: 14px !important;
+    text-shadow: 0 1px 0 #000 !important;
+    transition: all 0.1s !important;
+}
+.stButton>button[kind="primary"]:active {
+    transform: translateY(4px);
+    box-shadow: 0 0 0 2px #ff4e00, 0 2px 0 #000, 0 0 10px rgba(255,78,0,0.6) !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
 def carregar():
-    cad, mov = [], []
+    c,m=[],[] 
     if os.path.exists(ARQ_CAD):
-        try: cad = pd.read_csv(ARQ_CAD).to_dict('records')
+        try: c=pd.read_csv(ARQ_CAD).to_dict('records')
         except: pass
     if os.path.exists(ARQ_MOV):
-        try: mov = pd.read_csv(ARQ_MOV).to_dict('records')
+        try: m=pd.read_csv(ARQ_MOV).to_dict('records')
         except: pass
-    return cad, mov
+    return c,m
+def salvar_cad(): pd.DataFrame(st.session_state.cadastro).to_csv(ARQ_CAD,index=False)
+def salvar_mov(): pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
 
-def salvar_cad(): pd.DataFrame(st.session_state.cadastro).to_csv(ARQ_CAD, index=False)
-def salvar_mov(): pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV, index=False)
-
-if 'cadastro' not in st.session_state or 'mov' not in st.session_state:
-    c,m = carregar()
-    st.session_state.cadastro = c
-    st.session_state.mov = m
+if 'cadastro' not in st.session_state:
+    c,m=carregar()
+    st.session_state.cadastro=c
+    st.session_state.mov=m
 
 st.markdown("""
 <div class="main-header">
-    <h1>🔥 REFORMA DE FORNOS - MATERIAIS REFRATÁRIOS</h1>
-    <h2>1000 Posições (100x120) | Empilhamento 1-2-3 | Gestão por Posição de Chão | LOTE + Validade Editável</h2>
+    <h1>🔥 REFORMA DE FORNOS - MATERIAIS REFRATÁRIOS 🔥</h1>
+    <h2><span class="led led-green"></span>SISTEMA ONLINE <span class="led led-yellow"></span>1000 POSIÇÕES <span class="led led-red"></span>LED ATIVO - CHÃO CONTROL</h2>
 </div>
 """, unsafe_allow_html=True)
 
-tab1, tab2, tab3, tab4 = st.tabs(["📝 CADASTRO", "🔄 MOVIMENTAÇÃO", "📦 SALDO", "📈 DASHBOARD"])
+tab1,tab2,tab3,tab4 = st.tabs(["📝 CADASTRO LED","🔄 MOVIMENTAÇÃO","📦 SALDO","📈 DASHBOARD LED"])
 
 with tab1:
-    st.subheader("Cadastro com Validade Corrigida")
-    st.caption("Agora você define FABRICAÇÃO + DIAS DE VALIDADE e o app calcula a data certa. Ou edita a data direto.")
-
-    with st.form("form_cad", clear_on_submit=True):
-        c1,c2,c3,c4 = st.columns(4)
+    with st.form("form",clear_on_submit=True):
+        c1,c2,c3,c4=st.columns(4)
         with c1:
-            id_p = st.text_input("ID *", placeholder="01")
-            desc = st.text_input("DESCRIÇÃO *", placeholder="BLOCO ESTRELA")
-            marca = st.text_input("MARCA *", placeholder="ESTRELA")
-            lote = st.text_input("LOTE *", placeholder="L2024-001")
+            id_p=st.text_input("ID *","01")
+            desc=st.text_input("DESCRIÇÃO *","BLOCO ESTRELA")
+            marca=st.text_input("MARCA *","ESTRELA")
+            lote=st.text_input("LOTE *","L2024-001")
         with c2:
-            unidade = st.selectbox("UNIDADE *", ["peças","kg","m²","m³","ton","rolos","caixas","sacos"])
-            emp = st.selectbox("EMPILHAMENTO *", [1,2,3])
-            qtd_pad = st.number_input("QTD por Palete", value=500.0)
+            unidade=st.selectbox("UNIDADE *",["peças","kg","m²","ton","rolos"])
+            emp=st.selectbox("EMPILHAMENTO *",[1,2,3])
+            qtd=st.number_input("QTD por Palete",value=500.0)
         with c3:
-            fab = st.date_input("FABRICAÇÃO", value=date.today())
-            dias_val = st.number_input("DIAS DE VALIDADE", min_value=1, value=365, help="Ex: 365 dias = 1 ano. O app soma na fabricação")
-            # CALCULO CORRETO DA VALIDADE
-            val_calc = fab + timedelta(days=int(dias_val))
-            st.success(f"Validade calculada: {val_calc.strftime('%d/%m/%Y')}")
-            val_manual = st.date_input("Ou ajuste a VALIDADE manual", value=val_calc)
+            fab=st.date_input("FABRICAÇÃO",value=date.today())
+            dias=st.number_input("DIAS VALIDADE",value=365)
+            val=fab+timedelta(days=int(dias))
+            st.markdown(f"<div style='background:#000;color:#00ff88;border:2px solid #00ff88;box-shadow:0 0 15px #00ff88;padding:10px;border-radius:10px;font-weight:900;text-align:center;font-family:monospace;'>⏰ VALIDADE: {val.strftime('%d/%m/%Y')}</div>",unsafe_allow_html=True)
+            val_m=st.date_input("Ajuste Validade",value=val)
         with c4:
-            st.info(f"Emp {emp}: {emp} pal = 1 pos\n20 pos = {20*emp} paletes")
-            if st.form_submit_button("💾 SALVAR E GRAVAR", type="primary", use_container_width=True):
-                if id_p and desc and marca and lote:
-                    st.session_state.cadastro.append({
-                        "ID": id_p.strip().upper(), "Descrição": desc.strip().upper(), "Marca": marca.strip().upper(),
-                        "LOTE": lote.strip().upper(), "Unidade": unidade, "Empilhamento": int(emp),
-                        "Fabricação": str(fab), "Validade": str(val_manual), "Dias_Validade": int(dias_val),
-                        "QTD_por_palete": qtd_pad
-                    })
-                    salvar_cad()
-                    st.success(f"Salvo! Validade: {val_manual}")
-                else:
-                    st.error("Preencha ID, Descrição, Marca e LOTE")
+            st.markdown(f"<div class='metric-box'><h3><span class='led led-yellow'></span>EMPILHAMENTO</h3><h2>{emp} = 1 POS</h2><div style='color:#888;font-size:12px;'>20 POS = {20*emp} PALETES<br><span class='led led-green'></span>SOMBREADO ATIVO</div></div>",unsafe_allow_html=True)
+            if st.form_submit_button("💾 SALVAR COM LED",type="primary",use_container_width=True):
+                st.session_state.cadastro.append({"ID":id_p.upper(),"Descrição":desc.upper(),"Marca":marca.upper(),"LOTE":lote.upper(),"Unidade":unidade,"Empilhamento":int(emp),"Fabricação":str(fab),"Validade":str(val_m),"Dias_Validade":int(dias),"QTD_por_palete":qtd})
+                salvar_cad()
+                st.success("LED VERDE - Gravado!")
 
     if st.session_state.cadastro:
-        st.divider()
-        st.markdown("#### 📋 Editar Validade e Excluir")
-        df_cad = pd.DataFrame(st.session_state.cadastro)
-        # EDITOR DE TABELA PARA EDITAR VALIDADE
-        df_edit = st.data_editor(
-            df_cad,
-            use_container_width=True,
-            num_rows="dynamic",
-            column_config={
-                "Validade": st.column_config.DateColumn("Validade", format="DD/MM/YYYY"),
-                "Fabricação": st.column_config.DateColumn("Fabricação", format="DD/MM/YYYY"),
-            },
-            key="editor_cad"
-        )
-        c_save, c_del = st.columns(2)
-        with c_save:
-            if st.button("💾 GRAVAR ALTERAÇÕES DE VALIDADE", type="primary", use_container_width=True):
-                st.session_state.cadastro = df_edit.to_dict('records')
-                # Recalcula Dias_Validade corretamente
-                for item in st.session_state.cadastro:
-                    try:
-                        f = pd.to_datetime(item['Fabricação'])
-                        v = pd.to_datetime(item['Validade'])
-                        item['Dias_Validade'] = (v - f).days
-                    except: pass
-                salvar_cad()
-                st.success("Validade atualizada e gravada!")
-                st.rerun()
-        with c_del:
-            if st.button("🗑️ APAGAR TODO CADASTRO", use_container_width=True):
-                st.session_state.cadastro = []
-                if os.path.exists(ARQ_CAD): os.remove(ARQ_CAD)
-                st.rerun()
+        df=pd.DataFrame(st.session_state.cadastro)
+        edited=st.data_editor(df,use_container_width=True,num_rows="dynamic")
+        if st.button("💾 GRAVAR EDIÇÃO LED",type="primary",use_container_width=True):
+            st.session_state.cadastro=edited.to_dict('records')
+            salvar_cad()
+            st.rerun()
 
 with tab2:
-    st.subheader("Movimentação")
-    if not st.session_state.cadastro: st.warning("Cadastre primeiro")
-    else:
-        df_cad = pd.DataFrame(st.session_state.cadastro)
-        ca, cb = st.columns([1.2,1.8])
+    if st.session_state.cadastro:
+        df_cad=pd.DataFrame(st.session_state.cadastro)
+        ca,cb=st.columns([1,1.6])
         with ca:
-            tipo = st.radio("TIPO", ["ENTRADA","SAÍDA"], horizontal=True)
-            data_mov = st.date_input("Data Movimento", value=date.today())
-            id_sel = st.selectbox("ID", sorted(df_cad["ID"].unique()))
-            marca_sel = st.selectbox("MARCA", df_cad[df_cad["ID"]==id_sel]["Marca"].unique())
-            df_f = df_cad[(df_cad["ID"]==id_sel) & (df_cad["Marca"]==marca_sel)]
-            lote_sel = st.selectbox("LOTE", df_f["LOTE"].unique())
-            prod = df_f[df_f["LOTE"]==lote_sel].iloc[-1]
+            tipo=st.radio("TIPO", ["ENTRADA","SAÍDA"], horizontal=True)
+            id_s=st.selectbox("ID", sorted(df_cad["ID"].unique()))
+            marca_s=st.selectbox("MARCA", df_cad[df_cad["ID"]==id_s]["Marca"].unique())
+            df_f=df_cad[(df_cad["ID"]==id_s)&(df_cad["Marca"]==marca_s)]
+            lote_s=st.selectbox("LOTE", df_f["LOTE"].unique())
+            prod=df_f[df_f["LOTE"]==lote_s].iloc[-1]
         with cb:
-            st.info(f"**{prod['Descrição']}** | {prod['Marca']} | LOTE {prod['LOTE']} | Fab {prod['Fabricação']} | Val {prod['Validade']} | Emp {prod['Empilhamento']}")
-            c1,c2,c3 = st.columns(3)
-            with c1: qtd_pal = st.number_input("QTD PALETES", min_value=1, value=20, step=1)
-            with c2: qtd_unid = st.number_input(f"QTD {prod['Unidade']}", value=float(prod['QTD_por_palete']*qtd_pal))
+            st.markdown(f"<div class='card-prod'><span class='led led-green'></span><b style='font-size:20px;color:#ffe600;'>{prod['Descrição']}</b><br><span class='led led-yellow'></span>Marca: {prod['Marca']} | Lote: <span style='background:#ff4e00;color:white;padding:3px 10px;border-radius:6px;box-shadow:0 0 10px #ff4e00;'>{prod['LOTE']}</span><br><span class='led led-red'></span>Fab: {prod['Fabricação']} | Val: {prod['Validade']}</div>",unsafe_allow_html=True)
+            c1,c2,c3=st.columns(3)
+            with c1: qp=st.number_input("QTD PALETES", value=20, min_value=1)
+            with c2: qu=st.number_input("QTD UNIDADE", value=float(prod['QTD_por_palete']*qp))
             with c3:
-                pos_calc = qtd_pal / int(prod['Empilhamento'])
-                st.metric("POSIÇÕES CHÃO", f"{pos_calc:.1f}")
-            if st.button("➕ LANÇAR E GRAVAR", type="primary", use_container_width=True):
-                st.session_state.mov.append({
-                    "Data": str(data_mov), "Tipo": tipo, "ID": id_sel, "Descrição": prod["Descrição"], "Marca": marca_sel, "LOTE": lote_sel,
-                    "Unidade": prod["Unidade"], "Empilhamento": int(prod["Empilhamento"]),
-                    "Fabricação": str(prod["Fabricação"]), "Validade": str(prod["Validade"]),
-                    "QTD_Paletes": int(qtd_pal) if tipo=="ENTRADA" else -int(qtd_pal),
-                    "QTD_Unidade": float(qtd_unid) if tipo=="ENTRADA" else -float(qtd_unid),
-                    "Posições": pos_calc if tipo=="ENTRADA" else -pos_calc
-                })
+                pos=qp/int(prod['Empilhamento'])
+                st.markdown(f"<div class='metric-box'><h3>POS CHÃO</h3><h2 style='color:#00ff88;text-shadow:0 0 15px #00ff88;'>{pos:.1f}</h2></div>", unsafe_allow_html=True)
+            if st.button("➕ LANÇAR COM LED", type="primary", use_container_width=True):
+                st.session_state.mov.append({"Data":str(date.today()),"Tipo":tipo,"ID":id_s,"Descrição":prod['Descrição'],"Marca":marca_s,"LOTE":lote_s,"Unidade":prod['Unidade'],"Empilhamento":int(prod['Empilhamento']),"Fabricação":prod['Fabricação'],"Validade":prod['Validade'],"QTD_Paletes":qp if tipo=="ENTRADA" else -qp,"QTD_Unidade":qu if tipo=="ENTRADA" else -qu,"Posições":pos if tipo=="ENTRADA" else -pos})
                 salvar_mov()
-                st.success("Gravado!")
-
+                st.success("LED PISCANDO - Lançado!")
         if st.session_state.mov:
             st.dataframe(pd.DataFrame(st.session_state.mov), use_container_width=True)
-            if st.button("🗑️ APAGAR MOVIMENTAÇÕES"): 
-                st.session_state.mov = []
-                if os.path.exists(ARQ_MOV): os.remove(ARQ_MOV)
-                st.rerun()
 
 with tab3:
-    st.subheader("Saldo e Ocupação")
-    if st.button("🔄 ATUALIZAR", type="primary"): st.rerun()
-    if not st.session_state.mov: st.info("Vazio 0/1000")
-    else:
-        df_mov = pd.DataFrame(st.session_state.mov)
-        # CORREÇÃO CALCULO VALIDADE
-        df_mov["Validade_dt"] = pd.to_datetime(df_mov["Validade"])
-        df_mov["Fabricação_dt"] = pd.to_datetime(df_mov["Fabricação"])
-        df_mov["Dias_para_vencer"] = (df_mov["Validade_dt"] - pd.to_datetime(date.today())).dt.days
-
-        saldo = df_mov.groupby(["ID","Descrição","Marca","LOTE","Unidade","Empilhamento","Fabricação","Validade"], as_index=False).agg(
-            QTD_Paletes=("QTD_Paletes","sum"), QTD_Unidade=("QTD_Unidade","sum"), Posições=("Posições","sum"),
-            Dias_para_vencer=("Dias_para_vencer","min")
-        )
-        saldo = saldo[saldo["QTD_Paletes"]>0]
-        saldo["Posições_Ocupadas"] = saldo["QTD_Paletes"] / saldo["Empilhamento"]
-        
-        # Alerta validade
-        saldo["Status_Val"] = saldo["Dias_para_vencer"].apply(lambda x: "🔴 VENCIDO" if x<0 else "🟡 VENCE <30d" if x<=30 else "🟢 OK")
-
-        total_pos = saldo["Posições_Ocupadas"].sum()
-        taxa = total_pos/1000*100
-        m1,m2,m3,m4 = st.columns(4)
-        m1.metric("PALETES", int(saldo["QTD_Paletes"].sum()))
-        m2.metric("POSIÇÕES", f"{total_pos:.1f}/1000", f"{taxa:.1f}%")
-        m3.metric("LIVRES", f"{1000-total_pos:.1f}")
-        m4.metric("VENCIDOS", len(saldo[saldo["Dias_para_vencer"]<0]))
-
-        st.dataframe(saldo.sort_values("Dias_para_vencer"), use_container_width=True)
+    if st.session_state.mov:
+        df=pd.DataFrame(st.session_state.mov)
+        df["Validade_dt"]=pd.to_datetime(df["Validade"])
+        df["Dias"]=(df["Validade_dt"]-pd.to_datetime(date.today())).dt.days
+        saldo=df.groupby(["ID","Descrição","Marca","LOTE","Unidade","Empilhamento","Fabricação","Validade"],as_index=False).agg(QTD_Paletes=("QTD_Paletes","sum"),QTD_Unidade=("QTD_Unidade","sum"),Posições=("Posições","sum"),Dias=("Dias","min"))
+        saldo=saldo[saldo["QTD_Paletes"]>0]
+        saldo["Pos_Ocup"]=saldo["QTD_Paletes"]/saldo["Empilhamento"]
+        total=saldo["Pos_Ocup"].sum()
+        taxa=total/1000*100
+        m1,m2,m3,m4=st.columns(4)
+        with m1: st.markdown(f"<div class='metric-box'><h3><span class='led led-green'></span>PALETES</h3><h2>{int(saldo['QTD_Paletes'].sum())}</h2></div>",unsafe_allow_html=True)
+        with m2: st.markdown(f"<div class='metric-box'><h3><span class='led led-yellow'></span>OCUPADAS</h3><h2>{total:.0f}/1000</h2></div>",unsafe_allow_html=True)
+        with m3: st.markdown(f"<div class='metric-box'><h3><span class='led led-green'></span>LIVRES</h3><h2>{1000-total:.0f}</h2></div>",unsafe_allow_html=True)
+        with m4: st.markdown(f"<div class='metric-box'><h3><span class='led led-red'></span>TAXA</h3><h2>{taxa:.1f}%</h2></div>",unsafe_allow_html=True)
+        st.progress(min(taxa/100,1.0))
+        st.dataframe(saldo.sort_values("Dias"),use_container_width=True)
 
 with tab4:
-    st.subheader("Dashboard Validade Corrigida")
-    if not st.session_state.mov: st.warning("Sem dados")
-    else:
-        df_mov = pd.DataFrame(st.session_state.mov)
-        df_mov["Validade_dt"] = pd.to_datetime(df_mov["Validade"])
-        df_mov["Fabricação_dt"] = pd.to_datetime(df_mov["Fabricação"])
-        df_mov["Dias_para_vencer"] = (df_mov["Validade_dt"] - pd.to_datetime(date.today())).dt.days
-
-        saldo = df_mov.groupby(["ID","Descrição","Marca","LOTE","Unidade","Empilhamento","Fabricação","Validade"], as_index=False).agg(
-            QTD_Paletes=("QTD_Paletes","sum"), QTD_Unidade=("QTD_Unidade","sum"), Dias_para_vencer=("Dias_para_vencer","min")
-        )
-        saldo = saldo[saldo["QTD_Paletes"]>0]
-        saldo["Posições_Ocupadas"] = saldo["QTD_Paletes"]/saldo["Empilhamento"]
-        saldo = saldo.sort_values("Validade")
-
-        id_v = st.selectbox("Filtrar ID", sorted(saldo["ID"].unique()))
-        df_v = saldo[saldo["ID"]==id_v]
-
-        fig = px.scatter(df_v, x="Validade", y="Marca", size="QTD_Paletes", color="LOTE", 
-                         hover_data=["Dias_para_vencer","Fabricação"], 
-                         title=f"Timeline Validade - {id_v} | Cálculo Correto Dias para Vencer")
-        fig.add_vline(x=pd.to_datetime(date.today()), line_dash="dash", line_color="red", annotation_text="HOJE")
-        st.plotly_chart(fig, use_container_width=True)
-
-        fig2 = px.bar(df_v, x="LOTE", y="Dias_para_vencer", color="Marca", 
-                      title="Dias para vencer por Lote - Quanto menor, sai primeiro (FIFO)",
-                      color_continuous_scale="RdYlGn")
-        st.plotly_chart(fig2, use_container_width=True)
+    if st.session_state.mov:
+        df=pd.DataFrame(st.session_state.mov)
+        df["Validade_dt"]=pd.to_datetime(df["Validade"])
+        df["Dias"]=(df["Validade_dt"]-pd.to_datetime(date.today())).dt.days
+        saldo=df.groupby(["ID","Descrição","Marca","LOTE","Unidade","Empilhamento","Fabricação","Validade"],as_index=False).agg(QTD_Paletes=("QTD_Paletes","sum"),Dias=("Dias","min"))
+        saldo=saldo[saldo["QTD_Paletes"]>0]
+        saldo["Pos_Ocup"]=saldo["QTD_Paletes"]/2
+        st.plotly_chart(px.pie(pd.DataFrame({"Status":["OCUPADO","LIVRE"],"Pos":[saldo["Pos_Ocup"].sum(),1000-saldo["Pos_Ocup"].sum()]}),values="Pos",names="Status",hole=0.6,title="OCUPAÇÃO COM LED",color_discrete_sequence=["#ff4e00","#00ff88"]),use_container_width=True)
