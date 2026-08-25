@@ -10,249 +10,157 @@ ARQ_MOV = "movimentacao_refratario.csv"
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@800;900&display=swap');
-
-/* TOPO COM LED */
-.main-header {
-    background: radial-gradient(circle at top, #2a2a2a 0%, #000000 100%);
-    padding: 35px;
-    border-radius: 20px;
-    text-align: center;
-    border: 3px solid #ff4e00;
-    box-shadow: 0 0 15px #ff4e00, 0 0 30px #ff8a00, 0 0 45px rgba(255,78,0,0.5), inset 0 0 20px rgba(255,78,0,0.2);
-    position: relative;
-    overflow: hidden;
-}
-.main-header::before {
-    content: '';
-    position: absolute;
-    top: -2px; left: -2px; right: -2px; bottom: -2px;
-    background: linear-gradient(45deg, #ff4e00, #ffe600, #ff4e00, #ec0000);
-    border-radius: 20px;
-    z-index: -1;
-    animation: ledBorder 2s linear infinite;
-}
-@keyframes ledBorder {
-    0% { filter: hue-rotate(0deg); }
-    100% { filter: hue-rotate(360deg); }
-}
-.main-header h1 {
-    font-family: 'Montserrat', sans-serif;
-    color: #fff;
-    font-size: 44px;
-    font-weight: 900;
-    margin: 0;
-    text-shadow: 0 0 10px #ff4e00, 0 0 20px #ff4e00, 0 0 30px #ff0000, 3px 3px 0px #000;
-    animation: ledFlicker 1.5s infinite alternate;
-}
-@keyframes ledFlicker {
-    0% { text-shadow: 0 0 10px #ff4e00, 0 0 20px #ff4e00, 3px 3px 0px #000; }
-    100% { text-shadow: 0 0 20px #ffe600, 0 0 40px #ff4e00, 0 0 60px #ff0000, 3px 3px 0px #000; }
-}
-.main-header h2 {
-    color: #00ff88;
-    font-size: 16px;
-    font-weight: 700;
-    margin-top: 12px;
-    background: rgba(0,0,0,0.8);
-    display: inline-block;
-    padding: 8px 20px;
-    border-radius: 20px;
-    border: 1px solid #00ff88;
-    box-shadow: 0 0 10px #00ff88, inset 0 0 10px rgba(0,255,136,0.2);
-    font-family: monospace;
-    letter-spacing: 1px;
-}
-
-/* CARDS COM SOMBREADO E LED */
-.metric-box {
-    background: linear-gradient(145deg, #1a1a1a, #0a0a0a);
-    color: white;
-    padding: 22px;
-    border-radius: 16px;
-    text-align: center;
-    border: 2px solid #333;
-    box-shadow: 0 8px 20px rgba(0,0,0,0.8), 0 0 15px rgba(255,78,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
-    transition: all 0.3s;
-    position: relative;
-}
-.metric-box:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 12px 30px rgba(0,0,0,0.9), 0 0 25px #ff4e00, inset 0 1px 0 rgba(255,255,255,0.2);
-    border-color: #ff4e00;
-}
-.metric-box h3 { color: #888; margin:0; font-size: 12px; letter-spacing:2px; }
-.metric-box h2 { color: #ffe600; margin:8px 0; font-size: 32px; text-shadow: 0 0 10px #ffe600; }
-
-.card-prod {
-    background: linear-gradient(145deg, #1e1e1e, #000);
-    border-left: 6px solid #ff4e00;
-    border-radius: 14px;
-    padding: 18px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.7), 0 0 12px rgba(255,78,0,0.4);
-    color: white;
-    border-top: 1px solid #333;
-    border-right: 1px solid #333;
-    border-bottom: 1px solid #333;
-}
-
-/* LED INDICADORES */
-.led {
-    width: 14px; height: 14px; border-radius: 50%; display: inline-block; margin-right: 6px;
-    box-shadow: 0 0 8px currentColor, 0 0 15px currentColor;
-    animation: ledPulse 1s infinite alternate;
-}
-.led-green { background: #00ff88; color: #00ff88; }
-.led-red { background: #ff1744; color: #ff1744; }
-.led-yellow { background: #ffe600; color: #ffe600; }
-@keyframes ledPulse {
-    0% { opacity: 0.7; box-shadow: 0 0 5px currentColor; }
-    100% { opacity: 1; box-shadow: 0 0 15px currentColor, 0 0 25px currentColor; }
-}
-
-/* ABAS LED */
-.stTabs [data-baseweb="tab"] {
-    background: #111 !important;
-    color: #888 !important;
-    border: 2px solid #333 !important;
-    border-radius: 12px !important;
-    box-shadow: inset 0 0 10px rgba(0,0,0,0.8) !important;
-    font-weight: 800 !important;
-}
-.stTabs [aria-selected="true"] {
-    background: linear-gradient(135deg, #ff4e00, #ff0000) !important;
-    color: white !important;
-    border-color: #ffe600 !important;
-    box-shadow: 0 0 15px #ff4e00, 0 0 25px rgba(255,78,0,0.6) !important;
-    text-shadow: 0 0 8px white !important;
-}
-
-/* BOTÃO LED */
-.stButton>button[kind="primary"] {
-    background: linear-gradient(135deg, #ff4e00, #cc0000) !important;
-    border: 2px solid #000 !important;
-    font-weight: 900 !important;
-    box-shadow: 0 0 0 2px #ff4e00, 0 6px 0 #000, 0 0 20px rgba(255,78,0,0.6) !important;
-    border-radius: 14px !important;
-    text-shadow: 0 1px 0 #000 !important;
-    transition: all 0.1s !important;
-}
-.stButton>button[kind="primary"]:active {
-    transform: translateY(4px);
-    box-shadow: 0 0 0 2px #ff4e00, 0 2px 0 #000, 0 0 10px rgba(255,78,0,0.6) !important;
-}
+.main-header { background: radial-gradient(circle at top, #222, #000); padding:30px; border-radius:20px; text-align:center; border:3px solid #ff4e00; box-shadow:0 0 15px #ff4e00; }
+.main-header h1 { color:#fff; font-size:40px; font-weight:900; margin:0; text-shadow:0 0 10px #ff4e00, 3px 3px 0 #000; }
+.main-header h2 { color:#00ff88; font-family:monospace; background:#000; padding:6px 18px; border-radius:20px; border:1px solid #00ff88; }
+.metric-box { background:#111; padding:18px; border-radius:14px; text-align:center; border:2px solid #333; }
 </style>
 """, unsafe_allow_html=True)
 
+# --- PERSISTÊNCIA BLINDADA - NÃO APAGA SOZINHO ---
 def carregar():
-    c,m=[],[] 
+    c,m=[],[]
     if os.path.exists(ARQ_CAD):
         try: c=pd.read_csv(ARQ_CAD).to_dict('records')
-        except: pass
+        except: c=[]
     if os.path.exists(ARQ_MOV):
         try: m=pd.read_csv(ARQ_MOV).to_dict('records')
-        except: pass
+        except: m=[]
     return c,m
-def salvar_cad(): pd.DataFrame(st.session_state.cadastro).to_csv(ARQ_CAD,index=False)
-def salvar_mov(): pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
 
-if 'cadastro' not in st.session_state:
+def salvar_cad():
+    if st.session_state.cadastro: # SÓ SALVA SE TIVER DADO, NUNCA SALVA VAZIO POR CIMA
+        pd.DataFrame(st.session_state.cadastro).to_csv(ARQ_CAD,index=False)
+
+def salvar_mov():
+    if st.session_state.mov:
+        pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
+
+if 'iniciado' not in st.session_state:
     c,m=carregar()
     st.session_state.cadastro=c
     st.session_state.mov=m
+    st.session_state.iniciado=True
 
 st.markdown("""
 <div class="main-header">
     <h1>🔥 REFORMA DE FORNOS - MATERIAIS REFRATÁRIOS 🔥</h1>
-    <h2><span class="led led-green"></span>SISTEMA ONLINE <span class="led led-yellow"></span>1000 POSIÇÕES <span class="led led-red"></span>LED ATIVO - CHÃO CONTROL</h2>
+    <h2>✅ DADOS GRAVADOS - NÃO APAGA SOZINHO | BOTÃO EXCLUIR POR REGISTRO</h2>
 </div>
 """, unsafe_allow_html=True)
 
-tab1,tab2,tab3,tab4 = st.tabs(["📝 CADASTRO LED","🔄 MOVIMENTAÇÃO","📦 SALDO","📈 DASHBOARD LED"])
+tab1,tab2,tab3,tab4 = st.tabs(["📝 CADASTRO","🔄 MOVIMENTAÇÃO","📦 SALDO","📈 DASHBOARD 4 GRÁFICOS"])
 
 with tab1:
-    with st.form("form",clear_on_submit=True):
+    st.markdown(f"**📁 Arquivo gravado:** {ARQ_CAD} | **{len(st.session_state.cadastro)} registros salvos - NÃO SERÁ APAGADO**")
+
+    with st.form("form_cad",clear_on_submit=True):
         c1,c2,c3,c4=st.columns(4)
         with c1:
-            id_p=st.text_input("ID *","01")
-            desc=st.text_input("DESCRIÇÃO *","BLOCO ESTRELA")
-            marca=st.text_input("MARCA *","ESTRELA")
-            lote=st.text_input("LOTE *","L2024-001")
+            id_p=st.text_input("ID *","01"); desc=st.text_input("DESCRIÇÃO *","BLOCO"); marca=st.text_input("MARCA *","ESTRELA"); lote=st.text_input("LOTE *","L001")
         with c2:
-            unidade=st.selectbox("UNIDADE *",["peças","kg","m²","ton","rolos"])
-            emp=st.selectbox("EMPILHAMENTO *",[1,2,3])
-            qtd=st.number_input("QTD por Palete",value=500.0)
+            unidade=st.selectbox("UNIDADE *",["peças","kg","m²","ton"]); emp=st.selectbox("EMP *",[1,2,3]); qtd=st.number_input("QTD/Pal",value=500.0)
         with c3:
-            fab=st.date_input("FABRICAÇÃO",value=date.today())
-            dias=st.number_input("DIAS VALIDADE",value=365)
-            val=fab+timedelta(days=int(dias))
-            st.markdown(f"<div style='background:#000;color:#00ff88;border:2px solid #00ff88;box-shadow:0 0 15px #00ff88;padding:10px;border-radius:10px;font-weight:900;text-align:center;font-family:monospace;'>⏰ VALIDADE: {val.strftime('%d/%m/%Y')}</div>",unsafe_allow_html=True)
-            val_m=st.date_input("Ajuste Validade",value=val)
+            fab=st.date_input("FAB",value=date.today()); dias=st.number_input("DIAS VAL",value=365); val=fab+timedelta(days=int(dias)); val_m=st.date_input("Validade",value=val)
         with c4:
-            st.markdown(f"<div class='metric-box'><h3><span class='led led-yellow'></span>EMPILHAMENTO</h3><h2>{emp} = 1 POS</h2><div style='color:#888;font-size:12px;'>20 POS = {20*emp} PALETES<br><span class='led led-green'></span>SOMBREADO ATIVO</div></div>",unsafe_allow_html=True)
-            if st.form_submit_button("💾 SALVAR COM LED",type="primary",use_container_width=True):
-                st.session_state.cadastro.append({"ID":id_p.upper(),"Descrição":desc.upper(),"Marca":marca.upper(),"LOTE":lote.upper(),"Unidade":unidade,"Empilhamento":int(emp),"Fabricação":str(fab),"Validade":str(val_m),"Dias_Validade":int(dias),"QTD_por_palete":qtd})
+            if st.form_submit_button("💾 SALVAR NOVO REGISTRO",type="primary",use_container_width=True):
+                novo={"ID":id_p.upper(),"Descrição":desc.upper(),"Marca":marca.upper(),"LOTE":lote.upper(),"Unidade":unidade,"Empilhamento":int(emp),"Fabricação":str(fab),"Validade":str(val_m),"Dias_Validade":int(dias),"QTD_por_palete":qtd}
+                st.session_state.cadastro.append(novo)
                 salvar_cad()
-                st.success("LED VERDE - Gravado!")
+                st.success(f"✅ Registro {id_p} - {marca} - Lote {lote} GRAVADO e não será apagado!")
+                st.rerun()
 
     if st.session_state.cadastro:
-        df=pd.DataFrame(st.session_state.cadastro)
-        edited=st.data_editor(df,use_container_width=True,num_rows="dynamic")
-        if st.button("💾 GRAVAR EDIÇÃO LED",type="primary",use_container_width=True):
-            st.session_state.cadastro=edited.to_dict('records')
-            salvar_cad()
-            st.rerun()
+        st.divider()
+        st.markdown("### 📋 SEUS REGISTROS SALVOS - Botão EXCLUIR em cada linha")
+        st.caption("⚠️ Só apaga se você clicar no 🗑️ EXCLUIR REGISTRO daquela linha")
+
+        df_cad = pd.DataFrame(st.session_state.cadastro)
+        for idx in range(len(df_cad)-1, -1, -1): # de trás pra frente pra não bugar índice
+            row = df_cad.iloc[idx]
+            col1,col2,col3,col4,col5 = st.columns([1.5,3,2,1])
+            with col1: st.write(f"**{row['ID']}**")
+            with col2: st.write(f"{row['Descrição']} | **{row['Marca']}** | Lote: **{row['LOTE']}**")
+            with col3: st.write(f"Emp: {row['Empilhamento']} | {row['Unidade']} | Fab: {row['Fabricação']}")
+            with col4: st.write(f"Val: **{row['Validade']}** | {row['QTD_por_palete']}/pal")
+            with col5:
+                if st.button(f"🗑️ EXCLUIR", key=f"del_cad_{idx}_{row['LOTE']}", type="primary"):
+                    # EXCLUI SÓ ESSE REGISTRO
+                    st.session_state.cadastro.pop(idx)
+                    if len(st.session_state.cadastro)==0:
+                        if os.path.exists(ARQ_CAD): os.remove(ARQ_CAD)
+                    else:
+                        pd.DataFrame(st.session_state.cadastro).to_csv(ARQ_CAD,index=False)
+                    st.warning(f"Registro {row['ID']} {row['LOTE']} excluído!")
+                    st.rerun()
+        st.divider()
+        st.dataframe(df_cad, use_container_width=True)
 
 with tab2:
-    if st.session_state.cadastro:
+    if not st.session_state.cadastro:
+        st.warning("Cadastre primeiro")
+    else:
         df_cad=pd.DataFrame(st.session_state.cadastro)
-        ca,cb=st.columns([1,1.6])
+        ca,cb=st.columns([1,1.5])
         with ca:
-            tipo=st.radio("TIPO", ["ENTRADA","SAÍDA"], horizontal=True)
-            id_s=st.selectbox("ID", sorted(df_cad["ID"].unique()))
-            marca_s=st.selectbox("MARCA", df_cad[df_cad["ID"]==id_s]["Marca"].unique())
+            tipo=st.radio("TIPO",["ENTRADA","SAÍDA"],horizontal=True)
+            id_s=st.selectbox("ID",sorted(df_cad["ID"].unique()))
+            marca_s=st.selectbox("MARCA",df_cad[df_cad["ID"]==id_s]["Marca"].unique())
             df_f=df_cad[(df_cad["ID"]==id_s)&(df_cad["Marca"]==marca_s)]
-            lote_s=st.selectbox("LOTE", df_f["LOTE"].unique())
-            prod=df_f[df_f["LOTE"]==lote_s].iloc[-1]
+            lote_s=st.selectbox("LOTE",df_f["LOTE"].unique()); prod=df_f[df_f["LOTE"]==lote_s].iloc[-1]
         with cb:
-            st.markdown(f"<div class='card-prod'><span class='led led-green'></span><b style='font-size:20px;color:#ffe600;'>{prod['Descrição']}</b><br><span class='led led-yellow'></span>Marca: {prod['Marca']} | Lote: <span style='background:#ff4e00;color:white;padding:3px 10px;border-radius:6px;box-shadow:0 0 10px #ff4e00;'>{prod['LOTE']}</span><br><span class='led led-red'></span>Fab: {prod['Fabricação']} | Val: {prod['Validade']}</div>",unsafe_allow_html=True)
-            c1,c2,c3=st.columns(3)
-            with c1: qp=st.number_input("QTD PALETES", value=20, min_value=1)
-            with c2: qu=st.number_input("QTD UNIDADE", value=float(prod['QTD_por_palete']*qp))
-            with c3:
-                pos=qp/int(prod['Empilhamento'])
-                st.markdown(f"<div class='metric-box'><h3>POS CHÃO</h3><h2 style='color:#00ff88;text-shadow:0 0 15px #00ff88;'>{pos:.1f}</h2></div>", unsafe_allow_html=True)
-            if st.button("➕ LANÇAR COM LED", type="primary", use_container_width=True):
+            qp=st.number_input("QTD PALETES",value=20,min_value=1); qu=st.number_input("QTD UNIDADE",value=float(prod['QTD_por_palete']*qp))
+            pos=qp/int(prod['Empilhamento']); st.metric("POSIÇÕES CHÃO",f"{pos:.1f}")
+            if st.button("➕ LANÇAR MOVIMENTAÇÃO",type="primary",use_container_width=True):
                 st.session_state.mov.append({"Data":str(date.today()),"Tipo":tipo,"ID":id_s,"Descrição":prod['Descrição'],"Marca":marca_s,"LOTE":lote_s,"Unidade":prod['Unidade'],"Empilhamento":int(prod['Empilhamento']),"Fabricação":prod['Fabricação'],"Validade":prod['Validade'],"QTD_Paletes":qp if tipo=="ENTRADA" else -qp,"QTD_Unidade":qu if tipo=="ENTRADA" else -qu,"Posições":pos if tipo=="ENTRADA" else -pos})
-                salvar_mov()
-                st.success("LED PISCANDO - Lançado!")
-        if st.session_state.mov:
-            st.dataframe(pd.DataFrame(st.session_state.mov), use_container_width=True)
+                salvar_mov(); st.success("Movimentação gravada!"); st.rerun()
+
+    if st.session_state.mov:
+        st.markdown("### 📋 Movimentações - Botão EXCLUIR por registro")
+        df_mov=pd.DataFrame(st.session_state.mov)
+        for idx in range(len(df_mov)-1, -1, -1):
+            row=df_mov.iloc[idx]
+            c1,c2,c3,c4,c5=st.columns([1,2.5,1.5,1.5,1])
+            c1.write(f"{row['Data']} {row['Tipo']}")
+            c2.write(f"{row['ID']} {row['Marca']} L:{row['LOTE']}")
+            c3.write(f"{row['QTD_Paletes']} pal | {row['Posições']:.1f} pos")
+            c4.write(f"{row['QTD_Unidade']} {row['Unidade']}")
+            if c5.button(f"🗑️ EXCLUIR", key=f"del_mov_{idx}_{row['LOTE']}_{row['Data']}"):
+                st.session_state.mov.pop(idx)
+                if len(st.session_state.mov)==0:
+                    if os.path.exists(ARQ_MOV): os.remove(ARQ_MOV)
+                else:
+                    pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
+                st.rerun()
 
 with tab3:
     if st.session_state.mov:
-        df=pd.DataFrame(st.session_state.mov)
-        df["Validade_dt"]=pd.to_datetime(df["Validade"])
-        df["Dias"]=(df["Validade_dt"]-pd.to_datetime(date.today())).dt.days
+        df=pd.DataFrame(st.session_state.mov); df["Validade_dt"]=pd.to_datetime(df["Validade"]); df["Dias"]=(df["Validade_dt"]-pd.to_datetime(date.today())).dt.days
         saldo=df.groupby(["ID","Descrição","Marca","LOTE","Unidade","Empilhamento","Fabricação","Validade"],as_index=False).agg(QTD_Paletes=("QTD_Paletes","sum"),QTD_Unidade=("QTD_Unidade","sum"),Posições=("Posições","sum"),Dias=("Dias","min"))
-        saldo=saldo[saldo["QTD_Paletes"]>0]
-        saldo["Pos_Ocup"]=saldo["QTD_Paletes"]/saldo["Empilhamento"]
-        total=saldo["Pos_Ocup"].sum()
-        taxa=total/1000*100
-        m1,m2,m3,m4=st.columns(4)
-        with m1: st.markdown(f"<div class='metric-box'><h3><span class='led led-green'></span>PALETES</h3><h2>{int(saldo['QTD_Paletes'].sum())}</h2></div>",unsafe_allow_html=True)
-        with m2: st.markdown(f"<div class='metric-box'><h3><span class='led led-yellow'></span>OCUPADAS</h3><h2>{total:.0f}/1000</h2></div>",unsafe_allow_html=True)
-        with m3: st.markdown(f"<div class='metric-box'><h3><span class='led led-green'></span>LIVRES</h3><h2>{1000-total:.0f}</h2></div>",unsafe_allow_html=True)
-        with m4: st.markdown(f"<div class='metric-box'><h3><span class='led led-red'></span>TAXA</h3><h2>{taxa:.1f}%</h2></div>",unsafe_allow_html=True)
-        st.progress(min(taxa/100,1.0))
-        st.dataframe(saldo.sort_values("Dias"),use_container_width=True)
+        saldo=saldo[saldo["QTD_Paletes"]>0]; saldo["Pos_Ocup"]=saldo["QTD_Paletes"]/saldo["Empilhamento"]
+        total=saldo["Pos_Ocup"].sum(); st.metric("OCUPAÇÃO CHÃO",f"{total:.1f} / 1000 posições ({total/10:.1f}%)"); st.progress(min(total/1000,1.0))
+        st.dataframe(saldo,use_container_width=True)
 
 with tab4:
     if st.session_state.mov:
-        df=pd.DataFrame(st.session_state.mov)
-        df["Validade_dt"]=pd.to_datetime(df["Validade"])
-        df["Dias"]=(df["Validade_dt"]-pd.to_datetime(date.today())).dt.days
-        saldo=df.groupby(["ID","Descrição","Marca","LOTE","Unidade","Empilhamento","Fabricação","Validade"],as_index=False).agg(QTD_Paletes=("QTD_Paletes","sum"),Dias=("Dias","min"))
-        saldo=saldo[saldo["QTD_Paletes"]>0]
-        saldo["Pos_Ocup"]=saldo["QTD_Paletes"]/2
-        st.plotly_chart(px.pie(pd.DataFrame({"Status":["OCUPADO","LIVRE"],"Pos":[saldo["Pos_Ocup"].sum(),1000-saldo["Pos_Ocup"].sum()]}),values="Pos",names="Status",hole=0.6,title="OCUPAÇÃO COM LED",color_discrete_sequence=["#ff4e00","#00ff88"]),use_container_width=True)
+        df=pd.DataFrame(st.session_state.mov); df["Validade_dt"]=pd.to_datetime(df["Validade"]); df["Fabricação_dt"]=pd.to_datetime(df["Fabricação"]); df["Dias"]=(df["Validade_dt"]-pd.to_datetime(date.today())).dt.days
+        saldo=df.groupby(["ID","Descrição","Marca","LOTE","Unidade","Empilhamento","Fabricação","Validade","Fabricação_dt","Validade_dt"],as_index=False).agg(QTD_Paletes=("QTD_Paletes","sum"),QTD_Unidade=("QTD_Unidade","sum"),Dias=("Dias","min"))
+        saldo=saldo[saldo["QTD_Paletes"]>0]; saldo["Pos_Ocup"]=saldo["QTD_Paletes"]/saldo["Empilhamento"]; saldo["Total_ID"]=saldo.groupby("ID")["QTD_Unidade"].transform("sum"); saldo["%_ID"]=(saldo["QTD_Unidade"]/saldo["Total_ID"]*100).round(1)
+        id_sel=st.selectbox("ID MATERIAL",sorted(saldo["ID"].unique())); df_f=saldo[saldo["ID"]==id_sel]
+        g1,g2=st.columns(2)
+        with g1:
+            st.markdown("#### 1️⃣ QTD ESTOQUE POR ID %")
+            st.plotly_chart(px.pie(df_f,values="QTD_Unidade",names="Marca",color="LOTE",hole=0.45,title=f"% por Marca - {id_sel}"),use_container_width=True)
+        with g2:
+            st.markdown("#### 2️⃣ QTD POR MARCA")
+            st.plotly_chart(px.bar(df_f,x="Marca",y="QTD_Unidade",color="LOTE",barmode="stack",text="QTD_Paletes",title="QTD por Marca"),use_container_width=True)
+        st.markdown("#### 3️⃣ FABRICAÇÃO -> VALIDADE")
+        fig3=px.scatter(df_f,x="Validade_dt",y="Marca",size="QTD_Paletes",color="LOTE",hover_data=["Fabricação","Dias"])
+        fig3.add_vline(x=pd.to_datetime(date.today()),line_dash="dash",line_color="red",annotation_text="HOJE")
+        st.plotly_chart(fig3,use_container_width=True)
+        g3,g4=st.columns(2)
+        with g3: st.plotly_chart(px.bar(df_f.sort_values("Dias"),x="LOTE",y="Dias",color="Marca",title="Dias para vencer - FIFO"),use_container_width=True)
+        with g4:
+            total_pos=saldo["Pos_Ocup"].sum()
+            df_occ=pd.DataFrame({"Status":["OCUPADO","LIVRE"],"Pos":[total_pos,1000-total_pos]})
+            st.plotly_chart(px.pie(df_occ,values="Pos",names="Status",hole=0.6,title=f"Ocupação {total_pos:.0f}/1000"),use_container_width=True)
