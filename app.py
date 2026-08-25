@@ -114,7 +114,7 @@ with tab1:
         with c3:
             ent_in=st.number_input("QTD PALETES ENTRADA*", value=11.0)
             total_prev=safe_float(qtd_in)*safe_float(ent_in)
-            st.metric(f"TOTAL CALCULADO EM {unidade_in}", f"{total_prev:,.0f} {unidade_in}")
+            st.metric(f"TOTAL EM {unidade_in}", f"{total_prev:,.0f} {unidade_in}")
             st.metric("TOTAL PALETES", f"{safe_float(ent_in):.1f}")
         if st.form_submit_button("💾 CADASTRAR", type="primary", use_container_width=True):
             fab_str=fab_in.strftime("%d/%m/%Y")
@@ -145,12 +145,12 @@ with tab2:
                     qtd_por_palete_base=safe_float(r.get('QTD_PALETE',1250),1250)
                     unidade_base=str(r.get('UNIDADE','KG')).upper() or "KG"
                     break
-            st.info(f"QTD/PALETE: {qtd_por_palete_base:.0f} {unidade_base}\n\nUNIDADE: {unidade_base}")
+            st.info(f"QTD/PALETE: {qtd_por_palete_base:.0f} {unidade_base}")
         with c2:
             tipo_mov=st.selectbox("TIPO*", ["SAIDA","ENTRADA"], key="sel_tipo_mov")
             paletes_mov=st.number_input("QTD PALETES*", value=1.0, min_value=0.1, step=0.5, key="num_paletes_mov")
             total_qtd_mov=safe_float(paletes_mov)*safe_float(qtd_por_palete_base)
-            st.metric(f"TOTAL CALCULADO EM {unidade_base}", f"{total_qtd_mov:,.0f} {unidade_base}")
+            st.metric(f"TOTAL EM {unidade_base}", f"{total_qtd_mov:,.0f} {unidade_base}")
         with c3:
             motivo=st.text_input("MOTIVO*","REFORMA FORNO", key="txt_motivo")
             saldos=get_saldos_completos()
@@ -159,7 +159,7 @@ with tab2:
                 unid=saldo_atual.get('UNIDADE','KG')
                 st.metric(f"SALDO PALETES", f"{safe_float(saldo_atual.get('SALDO_PALETES',0)):.1f}")
                 st.metric(f"SALDO {unid}", f"{safe_float(saldo_atual.get('SALDO_QTD',0)):,.0f} {unid}")
-        if st.button(f"✅ REGISTRAR MOVIMENTAÇÃO", type="primary", use_container_width=True, key="btn_reg_mov"):
+        if st.button(f"✅ REGISTRAR", type="primary", use_container_width=True, key="btn_reg_mov"):
             if tipo_mov=="SAIDA" and saldo_atual and safe_float(saldo_atual.get('SALDO_PALETES',0))<safe_float(paletes_mov):
                 st.error(f"⛔ SALDO INSUFICIENTE! Saldo: {safe_float(saldo_atual.get('SALDO_PALETES',0)):.1f} PALETES")
             else:
@@ -183,7 +183,7 @@ with tab3:
             saldo_pal=safe_float(r.get('SALDO_PALETES',0))
             unidade=str(r.get('UNIDADE','KG')).upper()
             qtd_base=safe_float(r.get('QTD_PALETE_BASE',0) or r.get('QTD_PALETE',0),0)
-            html+=f"<tr><td><b>{r.get('ID','')}</b></td><td>{r.get('DESCRICAO','')}</td><td class='lote'>{lote}</td><td class='fab'><b>{r.get('FABRICACAO','')}</b></td><td class='val'><b>{r.get('VALIDO_ATE','')}</b></td><td style='background:#ffcc99;'><b>{unidade}</b></td><td>{qtd_base:,.0f}</td><td style='background:#a0ffa0;'>{safe_float(r.get('ENTRADAS_PALETES',0)):.1f}</td><td style='background:#ffb0b0;'>{safe_float(r.get('SAIDAS_PALETES',0)):.1f}</td><td style='background:#7fff7f;'><b>{saldo_pal:.1f}</b></td><td style='background:#a0ffa0;'>{safe_float(r.get('ENTRADAS_QTD',0)):,.0f} {unidade}</td><td style='background:#ffb0b0;'>{safe_float(r.get('SAIDAS_QTD',0)):,.0f} {unidade}</td><td style='background:#7fff7f;'><b>{saldo_qtd:,.0f} {unidade}</b></td><td>{'✅ OK' if saldo_qtd>0 else '⛔ ZERADO'}</td></tr>"
+            html+=f"<tr><td><b>{r.get('ID','')}</b></td><td>{r.get('DESCRICAO','')}</td><td class='lote'>{lote}</td><td class='fab'><b>{r.get('FABRICACAO','')}</b></td><td class='val'><b>{r.get('VALIDO_ATE','')}</b></td><td style='background:#ffcc99;'><b>{unidade}</b></td><td>{qtd_base:,.0f}</td><td style='background:#a0ffa0;'>{safe_float(r.get('ENTRADAS_PALETES',0)):.1f}</td><td style='background:#ffb0b0;'>{safe_float(r.get('SAIDAS_PALETES',0)):.1f}</td><td style='background:#7fff7f;'><b>{saldo_pal:.1f}</b></td><td style='background:#a0ffa0;'>{safe_float(r.get('ENTRADAS_QTD',0)):,.0f}</td><td style='background:#ffb0b0;'>{safe_float(r.get('SAIDAS_QTD',0)):,.0f}</td><td style='background:#7fff7f;'><b>{saldo_qtd:,.0f} {unidade}</b></td><td>{'✅ OK' if saldo_qtd>0 else '⛔ ZERADO'}</td></tr>"
         html+="</table>"
         st.markdown(html, unsafe_allow_html=True)
 
@@ -217,15 +217,52 @@ with tab4:
             st.markdown('</div>', unsafe_allow_html=True)
 
 with tab5:
-    st.markdown("### 📈 GRAFICOS")
-    if not st.session_state.get('lista_cadastro'): st.warning("Sem dados")
+    st.markdown("### 📈 GRAFICOS - UNIDADE DINÂMICA")
+    if not st.session_state.get('lista_cadastro'):
+        st.warning("Sem dados")
     else:
-        saldos=get_saldos_completos()
-        df=pd.DataFrame(list(saldos.values()))
-        if not df.empty:
-            df["SALDO_QTD_NUM"]=df["SALDO_QTD"].apply(lambda x: safe_float(x,0))
-            fig1=px.bar(df, x='DESCRICAO', y='SALDO_QTD_NUM', color='ID', title="SALDO POR PRODUTO (UNIDADE DO CADASTRO)")
-            st.plotly_chart(fig1, use_container_width=True)
-            fig2=px.bar(df, x='LOTE', y='SALDO_QTD_NUM', color='VALIDO_ATE', title="LOTES X VALIDADE")
-            fig2.update_layout(plot_bgcolor='#A8C5A2')
-            st.plotly_chart(fig2, use_container_width=True)
+        try:
+            saldos=get_saldos_completos()
+            if not saldos:
+                st.warning("Sem saldo")
+            else:
+                lista=[]
+                for lote,d in saldos.items():
+                    # garante campos basicos
+                    desc=str(d.get('DESCRICAO','SEM DESC')).strip() or "SEM DESC"
+                    idv=str(d.get('ID','?')).strip() or "?"
+                    lista.append({
+                        "LOTE": str(lote),
+                        "DESCRICAO": desc,
+                        "ID": idv,
+                        "VALIDO_ATE": str(d.get('VALIDO_ATE','00/00/0000')),
+                        "UNIDADE": str(d.get('UNIDADE','KG')),
+                        "SALDO_QTD": safe_float(d.get('SALDO_QTD',0)),
+                        "SALDO_PAL": safe_float(d.get('SALDO_PALETES',0))
+                    })
+                df=pd.DataFrame(lista)
+                df=df[df["SALDO_QTD"]>0]
+                if df.empty:
+                    st.info("Sem saldo positivo para grafico")
+                else:
+                    c1,c2=st.columns(2)
+                    with c1:
+                        fig1=px.bar(df, x='DESCRICAO', y='SALDO_QTD', color='ID', title="SALDO POR PRODUTO (NA UNIDADE CADASTRADA)", text='UNIDADE')
+                        fig1.update_traces(textposition='outside')
+                        st.plotly_chart(fig1, use_container_width=True)
+                    with c2:
+                        fig2=px.bar(df, x='LOTE', y='SALDO_PAL', color='VALIDO_ATE', title="SALDO PALETES X VALIDADE")
+                        fig2.update_layout(plot_bgcolor='#A8C5A2')
+                        st.plotly_chart(fig2, use_container_width=True)
+                    fig3=px.bar(df, x='LOTE', y='SALDO_QTD', color='VALIDO_ATE', title="SALDO NA UNIDADE CADASTRADA X VALIDADE")
+                    fig3.update_layout(plot_bgcolor='#A8C5A2')
+                    st.plotly_chart(fig3, use_container_width=True)
+                    st.dataframe(df, use_container_width=True)
+        except Exception as e:
+            st.error(f"Erro grafico: {e}")
+            st.info("Mostrando tabela bruta para debug")
+            try:
+                saldos=get_saldos_completos()
+                st.dataframe(pd.DataFrame(list(saldos.values())))
+            except Exception as e2:
+                st.error(f"Erro tabela: {e2}")
