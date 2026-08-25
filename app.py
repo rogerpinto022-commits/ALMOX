@@ -32,24 +32,19 @@ def carregar():
     if os.path.exists(ARQ_CAD):
         try:
             df=pd.read_csv(ARQ_CAD)
-            # NORMALIZA COLUNAS - REMOVE ACENTO E DEIXA MAIUSCULO
-            df.columns=[c.upper().replace("Ç","C").replace("Ã","A").replace("Á","A") for c in df.columns]
-            # Renomeia para padrão
-            mapa={"DESCRICAO":"DESCRICAO","MARCA":"MARCA","LOTE":"LOTE","VALIDADE":"VALIDADE","QTD/PALETE":"QTD_PALETE","QTD_PALETE":"QTD_PALETE","ENTRADA":"ENTRADA","TOTAL":"TOTAL","IDADE":"UNIDADE","UNIDADE":"UNIDADE","DATA":"DATA","ID":"ID"}
-            df.rename(columns=mapa, inplace=True)
+            df.columns=[c.upper().replace("Ç","C").replace("Ã","A") for c in df.columns]
             lista=df.to_dict('records')
-        except Exception as e:
-            st.error(f"Erro ao carregar CSV: {e}")
+        except: pass
     return lista
 
 if 'iniciado' not in st.session_state:
     st.session_state.cadastro=carregar()
     st.session_state.iniciado=True
     st.session_state.mostrar_tabela=False
-    st.session_state.produto_clicado=None
+    st.session_state.id_selecionado=None
 
 st.title("🔥 REFORMA DE FORNOS - MATERIAIS REFRATARIOS")
-tab1,tab2,tab3 = st.tabs(["📝 CADASTRO","📦 TABELA PADRÃO FOTO","📊 GRÁFICO FORMATO FOTO"])
+tab1,tab2,tab3 = st.tabs(["📝 CADASTRO","📦 TABELA","📊 LOTES POR PRODUTO"])
 
 with tab1:
     with st.form("cad",clear_on_submit=True):
@@ -59,72 +54,91 @@ with tab1:
         with c3: entrada=st.number_input("ENTRADA",value=11); unidade=st.text_input("UNIDADE","KILOS"); data=st.date_input("DATA",value=date.today())
         if st.form_submit_button("💾 SALVAR",type="primary"):
             total=qtd_pal*entrada
-            # SALVA SEMPRE SEM ACENTO PARA NAO QUEBRAR
-            st.session_state.cadastro.append({"ID":str(id_p),"DESCRICAO":desc.upper(),"MARCA":marca.upper(),"LOTE":str(lote),"VALIDADE":validade,"QTD_PALETE":qtd_pal,"ENTRADA":entrada,"TOTAL":total,"UNIDADE":unidade,"DATA":data.strftime("%d/%m/%Y")})
+            st.session_state.cadastro.append({"ID":str(id_p).strip(),"DESCRICAO":desc.upper().strip(),"MARCA":marca.upper().strip(),"LOTE":str(lote).strip(),"VALIDADE":validade,"QTD_PALETE":qtd_pal,"ENTRADA":entrada,"TOTAL":total,"UNIDADE":unidade,"DATA":data.strftime("%d/%m/%Y")})
             pd.DataFrame(st.session_state.cadastro).to_csv(ARQ_CAD,index=False); st.rerun()
 
 with tab2:
-    if not st.session_state.cadastro:
-        st.info("Sem dados")
-    else:
-        df=pd.DataFrame(st.session_state.cadastro)
+    if st.session_state.cadastro:
         if st.button("👁️ VER TABELA COMPLETA" if not st.session_state.mostrar_tabela else "🙈 ESCONDER", type="primary"):
             st.session_state.mostrar_tabela=not st.session_state.mostrar_tabela; st.rerun()
         if st.session_state.mostrar_tabela:
-            html='<table class="tabela-ref"><tr><th>ID</th><th>DESCRIÇÃO</th><th>MARCA</th><th>LOTE</th><th>VALIDADE</th><th>QTD/PALETE</th><th>ENTRADA</th><th>TOTAL</th><th>IDADE DE MEDI</th><th>DATA</th></tr>'
+            html='<table class="tabela-ref"><tr><th>ID</th><th>DESCRIÇÃO</th><th>MARCA</th><th>LOTE</th><th>VALIDADE</th><th>QTD/PALETE</th><th>ENTRADA</th><th>TOTAL</th><th>UNIDADE</th><th>DATA</th></tr>'
             for r in st.session_state.cadastro:
-                # usa.get para nunca dar KeyError
                 html+=f"<tr><td>{r.get('ID','')}</td><td>{r.get('DESCRICAO','')}</td><td>{r.get('MARCA','')}</td><td class='lote-verde'>{r.get('LOTE','')}</td><td>{r.get('VALIDADE','')}</td><td class='qtd-cinza'>{r.get('QTD_PALETE','')}</td><td>{r.get('ENTRADA','')}</td><td>{r.get('TOTAL','')}</td><td>{r.get('UNIDADE','')}</td><td>{r.get('DATA','')}</td></tr>"
             html+='</table>'
             st.markdown(html,unsafe_allow_html=True)
-            st.write("---")
-            for idx in range(len(st.session_state.cadastro)-1,-1,-1):
-                r=st.session_state.cadastro[idx]
-                a,b=st.columns([4,1])
-                a.write(f"{r.get('ID')} - {r.get('DESCRICAO')} - LOTE {r.get('LOTE')}")
-                if b.button("🗑️ Excluir", key=f"del_{idx}_{r.get('LOTE','')}"):
-                    st.session_state.cadastro.pop(idx)
-                    if st.session_state.cadastro: pd.DataFrame(st.session_state.cadastro).to_csv(ARQ_CAD,index=False)
-                    else:
-                        if os.path.exists(ARQ_CAD): os.remove(ARQ_CAD)
-                    st.rerun()
 
+# ===== ABA QUE VOCÊ QUER - TODOS LOTES DO PRODUTO =====
 with tab3:
-    st.markdown("### Clique no produto para ver gráfico formato da sua foto (fundo verde)")
+    st.markdown("### Clique no produto e veja TODOS OS LOTES dele")
     if not st.session_state.cadastro:
         st.warning("Cadastre primeiro")
     else:
+        df=pd.DataFrame(st.session_state.cadastro)
+        # LISTA ÚNICA DE PRODUTOS (ID + DESCRICAO)
+        produtos_unicos = df.drop_duplicates(subset=['ID','DESCRICAO'])[['ID','DESCRICAO','MARCA']]
+
+        st.write(f"**{len(produtos_unicos)} produtos cadastrados - CLIQUE PARA VER LOTES:**")
         cols=st.columns(3)
-        for i, r in enumerate(st.session_state.cadastro):
-            # BLINDADO - sem row['DESCRIÇÃO'], usa.get
-            id_v = r.get('ID','?')
-            desc_v = r.get('DESCRICAO','?')
-            lote_v = r.get('LOTE','?')
+        for i, (_, row) in enumerate(produtos_unicos.iterrows()):
+            id_prod = str(row['ID'])
+            desc_prod = str(row['DESCRICAO'])
+            marca_prod = str(row['MARCA'])
+            qtd_lotes = len(df[df['ID']==id_prod])
             with cols[i%3]:
-                if st.button(f"{id_v} - {desc_v}\nL:{lote_v}", key=f"prod_{i}_{lote_v}", use_container_width=True):
-                    st.session_state.produto_clicado = r
+                if st.button(f"📦 ID {id_prod} - {desc_prod}\n{marca_prod} | {qtd_lotes} lotes", key=f"prod_{id_prod}_{i}", use_container_width=True):
+                    st.session_state.id_selecionado = id_prod
 
-        if st.session_state.produto_clicado:
-            p=st.session_state.produto_clicado
-            st.success(f"Selecionado: {p.get('DESCRICAO')} | {p.get('MARCA')} | LOTE {p.get('LOTE')} | VAL {p.get('VALIDADE')}")
+        # MOSTRA TODOS OS LOTES DO PRODUTO SELECIONADO
+        if st.session_state.id_selecionado:
+            id_sel = st.session_state.id_selecionado
+            df_filtrado = df[df['ID'].astype(str)==str(id_sel)].copy()
 
-            # GRAFICO NO FORMATO DA FOTO
-            labels = [f"LOTE {p.get('LOTE')}", f"QTD/PAL {p.get('QTD_PALETE')}", f"ENTRADA {p.get('ENTRADA')}", f"TOTAL {p.get('TOTAL')}"]
-            valores = [float(p.get('TOTAL',0)), float(p.get('QTD_PALETE',0))*10, float(p.get('ENTRADA',0))*100, float(p.get('TOTAL',0))*0.4]
-            cores = ["#6FA8DC", "#FFFFFF", "#808080", "#FFFFFF"]
+            if df_filtrado.empty:
+                st.error("Nenhum lote para esse ID")
+            else:
+                desc_sel = df_filtrado.iloc[0].get('DESCRICAO','')
+                st.success(f"### PRODUTO: ID {id_sel} - {desc_sel} | {len(df_filtrado)} LOTES CADASTRADOS")
 
-            fig = go.Figure(go.Bar(
-                x=valores, y=labels, orientation='h',
-                marker=dict(color=cores, line=dict(color='black', width=1)),
-                text=[f"{v:,.0f}" for v in valores], textposition='outside'
-            ))
-            fig.update_layout(
-                plot_bgcolor='#A8D5A2', paper_bgcolor='#A8D5A2',
-                title=f"VALIDADE - {p.get('DESCRICAO')} | LOTE {p.get('LOTE')} | VALIDADE {p.get('VALIDADE')}",
-                xaxis=dict(showgrid=False, showticklabels=False),
-                yaxis=dict(showgrid=False, linecolor='black', linewidth=2),
-                height=350, margin=dict(l=150, r=40, t=60, b=20)
-            )
-            st.plotly_chart(fig, use_container_width=True)
+                # TABELA DE TODOS OS LOTES DESSE PRODUTO
+                html='<table class="tabela-ref"><tr><th>LOTE</th><th>MARCA</th><th>VALIDADE</th><th>QTD/PALETE</th><th>ENTRADA</th><th>TOTAL</th><th>DATA</th></tr>'
+                for _, r in df_filtrado.iterrows():
+                    html+=f"<tr><td class='lote-verde'>{r.get('LOTE','')}</td><td>{r.get('MARCA','')}</td><td>{r.get('VALIDADE','')}</td><td class='qtd-cinza'>{r.get('QTD_PALETE','')}</td><td>{r.get('ENTRADA','')}</td><td>{r.get('TOTAL','')}</td><td>{r.get('DATA','')}</td></tr>"
+                html+='</table>'
+                st.markdown(html,unsafe_allow_html=True)
+
+                # GRÁFICO FORMATO DA SUA FOTO - FUNDO VERDE - TODOS LOTES
+                st.markdown("#### 📊 Gráfico no formato da foto - Todos lotes do produto")
+
+                labels = df_filtrado['LOTE'].astype(str).tolist()
+                valores = df_filtrado['TOTAL'].astype(float).tolist()
+
+                # CORES ALTERNADAS IGUAL FOTO: azul, branco, cinza, branco...
+                cores_base = ["#6FA8DC", "#FFFFFF", "#808080", "#EFEFEF"]
+                cores = [cores_base[i % len(cores_base)] for i in range(len(labels))]
+
+                fig = go.Figure(go.Bar(
+                    x=valores,
+                    y=[f"LOTE {l} | VAL {v}" for l, v in zip(df_filtrado['LOTE'], df_filtrado['VALIDADE'])],
+                    orientation='h',
+                    marker=dict(color=cores, line=dict(color='black', width=1.5)),
+                    text=[f"{v:,.0f} | L:{l}" for v, l in zip(valores, labels)],
+                    textposition='outside',
+                    textfont=dict(size=12, color='black', family='Arial Black'),
+                    hovertemplate='<b>LOTE %{y}</b><br>TOTAL: %{x:,.0f}<br>QTD/PAL: %{customdata[0]}<br>ENTRADA: %{customdata[1]}<br>VALIDADE: %{customdata[2]}<extra></extra>',
+                    customdata=df_filtrado[['QTD_PALETE','ENTRADA','VALIDADE']].values
+                ))
+
+                fig.update_layout(
+                    plot_bgcolor='#A8D5A2',
+                    paper_bgcolor='#A8D5A2',
+                    title=f"TODOS OS LOTES - ID {id_sel} - {desc_sel} - FORMATO FOTO VERDE",
+                    xaxis=dict(showgrid=False, showticklabels=False),
+                    yaxis=dict(showgrid=False, linecolor='black', linewidth=2, tickfont=dict(size=13, color='black', family='Arial Black')),
+                    height= 120 + len(labels)*60,
+                    margin=dict(l=220, r=100, t=60, b=20)
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("🔵 Azul/⚪ Branco/⚫ Cinza = lotes | Fundo verde igual sua foto | Passe mouse para ver validade, QTD/PALETE e ENTRADA")
         else:
-            st.info("👆 Clique em um produto acima")
+            st.info("👆 Clique em um produto acima para ver TODOS OS LOTES dele no gráfico verde")
