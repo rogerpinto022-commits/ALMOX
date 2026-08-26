@@ -4,10 +4,18 @@ import os
 from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 import plotly.express as px
+import pytz
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="REFORMA DE FORNOS", layout="wide", page_icon="🔥")
+fuso = pytz.timezone('America/Sao_Paulo')
+
 ARQ_CAD = "cadastro_refratario.csv"
 ARQ_MOV = "movimentacao.csv"
+ARQ_EMAILS = "emails.csv"
+
+LOCAL_GALPAO = "GALPÃO DE MATERIAIS REFRATARIOS"
+LOCAL_OFICINA = "OFICINA DE REVESTIMENTO REFORMA DE FORNOS"
 
 def safe_float(v, padrao=0.0):
     try:
@@ -20,6 +28,9 @@ def carregar_seguro(caminho):
     try:
         df=pd.read_csv(caminho).fillna("")
         df.columns=[str(c).upper().strip() for c in df.columns]
+        # Migração: se não tem LOCAL, assume GALPÃO
+        if "LOCAL" not in df.columns:
+            df["LOCAL"] = LOCAL_GALPAO
         return df.to_dict('records')
     except:
         try: os.remove(caminho)
@@ -29,6 +40,57 @@ def carregar_seguro(caminho):
 if 'lista_cadastro' not in st.session_state: st.session_state.lista_cadastro=carregar_seguro(ARQ_CAD)
 if 'lista_mov' not in st.session_state: st.session_state.lista_mov=carregar_seguro(ARQ_MOV)
 if 'id_selecionado' not in st.session_state: st.session_state.id_selecionado=None
+
+# --- LOGIN COM LOCAL ---
+if 'logado' not in st.session_state: st.session_state.logado=False
+if not os.path.exists(ARQ_EMAILS):
+    pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin","LOCAL":"AMBOS","STATUS":"LIBERADO"}]).to_csv(ARQ_EMAILS, index=False)
+
+if not st.session_state.logado:
+    st.title("🔐 REFORMA DE FORNOS - Login")
+    e = st.text_input("Email").lower().strip()
+    s = st.text_input("Senha", type="password")
+    if st.button("Entrar", type="primary"):
+        df_e = pd.read_csv(ARQ_EMAILS)
+        user = df_e[(df_e["EMAIL"]==e) & (df_e["SENHA"]==s) & (df_e["STATUS"]=="LIBERADO")]
+        if not user.empty:
+            st.session_state.logado=True
+            st.session_state.local_acesso=user.iloc[0]["LOCAL"]
+            st.session_state.usuario=e
+            st.rerun()
+        else:
+            st.error("Login inválido")
+    st.stop()
+
+agora_br = datetime.now(fuso)
+
+# --- CONTROLE DE TELA QUE VOCÊ PEDIU ---
+st.sidebar.divider()
+st.sidebar.subheader("📱 Controle de Tela")
+manter = st.sidebar.toggle("🔒 MANTER ABERTO", value=True, help="Não deixa a tela apagar na contagem")
+if manter:
+    components.html("""
+    <script>
+    let wakeLock=null;
+    async function requestLock(){ try{ if('wakeLock' in navigator){ wakeLock=await navigator.wakeLock.request('screen'); } }catch(e){} }
+    requestLock();
+    document.addEventListener('visibilitychange',()=>{ if(wakeLock!==null && document.visibilityState==='visible'){requestLock();} });
+    </script>
+    """, height=0)
+    st.sidebar.caption("✅ Tela travada ligada")
+
+if st.sidebar.button("🔴 DESLIGAR / FECHAR", type="primary", use_container_width=True):
+    pd.DataFrame(st.session_state.lista_cadastro).to_csv(ARQ_CAD,index=False)
+    pd.DataFrame(st.session_state.lista_mov).to_csv(ARQ_MOV,index=False)
+    st.sidebar.warning("Salvando e fechando...")
+    st.session_state.clear()
+    st.stop()
+
+if st.sidebar.button("🚪 Sair do Login"):
+    pd.DataFrame(st.session_state.lista_cadastro).to_csv(ARQ_CAD,index=False)
+    pd.DataFrame(st.session_state.lista_mov).to_csv(ARQ_MOV,index=False)
+    st.session_state.clear()
+    st.rerun()
 
 def calcular_valido_ate(fab_str, tempo_meses):
     try:
@@ -42,41 +104,87 @@ def get_saldos_completos():
     for r in st.session_state.get('lista_cadastro',[]):
         lote=str(r.get('LOTE','')).strip()
         if not lote: continue
+        local = str(r.get('LOCAL', LOCAL_GALPAO)).upper()
+        if LOCAL_GALPAO not in local and LOCAL_OFICINA not in local:
+            local = LOCAL_GALPAO
+        else:
+            # normaliza
+            if "GALP" in local: local = LOCAL_GALPAO
+            else: local = LOCAL_OFICINA
         qtd_palete=safe_float(r.get('QTD_PALETE',0),0)
         entrada_pal=safe_float(r.get('ENTRADA',0),0)
         total=safe_float(r.get('TOTAL',0),0)
         if total==0: total=qtd_palete*entrada_pal
         unidade=str(r.get('UNIDADE','KG')).upper().strip() or "KG"
-        if lote not in saldos:
-            saldos[lote]=r.copy()
-            saldos[lote]['UNIDADE']=unidade
-            saldos[lote]['ENTRADAS_PALETES']=entrada_pal
-            saldos[lote]['SAIDAS_PALETES']=0
-            saldos[lote]['ENTRADAS_QTD']=total
-            saldos[lote]['SAIDAS_QTD']=0
-            saldos[lote]['SALDO_PALETES']=entrada_pal
-            saldos[lote]['SALDO_QTD']=total
-            saldos[lote]['QTD_PALETE_BASE']=qtd_palete
+        chave = f"{lote}__{local}"
+        if chave not in saldos:
+            saldos[chave]=r.copy()
+            saldos[chave]['LOCAL']=local
+            saldos[chave]['LOTE_ORIG']=lote
+            saldos[chave]['UNIDADE']=unidade
+            saldos[chave]['ENTRADAS_PALETES']=entrada_pal
+            saldos[chave]['SAIDAS_PALETES']=0
+            saldos[chave]['ENTRADAS_QTD']=total
+            saldos[chave]['SAIDAS_QTD']=0
+            saldos[chave]['SALDO_PALETES']=entrada_pal
+            saldos[chave]['SALDO_QTD']=total
+            saldos[chave]['QTD_PALETE_BASE']=qtd_palete
         else:
-            saldos[lote]['ENTRADAS_PALETES']=safe_float(saldos[lote].get('ENTRADAS_PALETES',0))+entrada_pal
-            saldos[lote]['ENTRADAS_QTD']=safe_float(saldos[lote].get('ENTRADAS_QTD',0))+total
-            saldos[lote]['SALDO_PALETES']=safe_float(saldos[lote].get('SALDO_PALETES',0))+entrada_pal
-            saldos[lote]['SALDO_QTD']=safe_float(saldos[lote].get('SALDO_QTD',0))+total
+            saldos[chave]['ENTRADAS_PALETES']+=entrada_pal
+            saldos[chave]['ENTRADAS_QTD']+=total
+            saldos[chave]['SALDO_PALETES']+=entrada_pal
+            saldos[chave]['SALDO_QTD']+=total
+
+    # Aplica movimentações com LÓGICA AUTOMÁTICA DE TRANSFERÊNCIA
     for m in st.session_state.get('lista_mov',[]):
         lote=str(m.get('LOTE','')).strip()
-        if lote in saldos:
-            paletes=safe_float(m.get('PALETES',0),0)
-            qtd=safe_float(m.get('TOTAL_QTD',0),0)
-            if str(m.get('TIPO','')).upper()=="ENTRADA":
-                saldos[lote]['ENTRADAS_PALETES']=safe_float(saldos[lote].get('ENTRADAS_PALETES',0))+paletes
-                saldos[lote]['ENTRADAS_QTD']=safe_float(saldos[lote].get('ENTRADAS_QTD',0))+qtd
-                saldos[lote]['SALDO_PALETES']=safe_float(saldos[lote].get('SALDO_PALETES',0))+paletes
-                saldos[lote]['SALDO_QTD']=safe_float(saldos[lote].get('SALDO_QTD',0))+qtd
+        local_mov=str(m.get('LOCAL_MOV','')).strip() or LOCAL_GALPAO
+        if "GALP" in local_mov.upper(): local_mov=LOCAL_GALPAO
+        else: local_mov=LOCAL_OFICINA
+        tipo=str(m.get('TIPO','')).upper()
+        paletes=safe_float(m.get('PALETES',0),0)
+        qtd=safe_float(m.get('TOTAL_QTD',0),0)
+        chave = f"{lote}__{local_mov}"
+        # Se não existe, cria espelho zerado
+        if chave not in saldos:
+            continue
+
+        # LOGICA AUTOMATICA
+        obs = str(m.get('OBS',''))
+        if "TRANSFERÊNCIA AUTO" in obs:
+            # Já foi aplicado como dois lançamentos? Na nova lógica, um lançamento já mexe nos dois
+            # Aqui só desconta/acrescenta no local informado, o outro local é tratado no lançamento
+            if tipo=="ENTRADA" and local_mov==LOCAL_OFICINA:
+                # Entrou na oficina, já saiu do galpão no mesmo movimento - já tratado no salvar
+                saldos[chave]['ENTRADAS_PALETES']+=paletes
+                saldos[chave]['ENTRADAS_QTD']+=qtd
+                saldos[chave]['SALDO_PALETES']+=paletes
+                saldos[chave]['SALDO_QTD']+=qtd
+            elif tipo=="SAIDA" and local_mov==LOCAL_GALPAO:
+                saldos[chave]['SAIDAS_PALETES']+=paletes
+                saldos[chave]['SAIDAS_QTD']+=qtd
+                saldos[chave]['SALDO_PALETES']-=paletes
+                saldos[chave]['SALDO_QTD']-=qtd
             else:
-                saldos[lote]['SAIDAS_PALETES']=safe_float(saldos[lote].get('SAIDAS_PALETES',0))+paletes
-                saldos[lote]['SAIDAS_QTD']=safe_float(saldos[lote].get('SAIDAS_QTD',0))+qtd
-                saldos[lote]['SALDO_PALETES']=safe_float(saldos[lote].get('SALDO_PALETES',0))-paletes
-                saldos[lote]['SALDO_QTD']=safe_float(saldos[lote].get('SALDO_QTD',0))-qtd
+                # Fallback
+                if tipo=="ENTRADA":
+                    saldos[chave]['SALDO_PALETES']+=paletes
+                    saldos[chave]['SALDO_QTD']+=qtd
+                else:
+                    saldos[chave]['SALDO_PALETES']-=paletes
+                    saldos[chave]['SALDO_QTD']-=qtd
+        else:
+            if tipo=="ENTRADA":
+                saldos[chave]['ENTRADAS_PALETES']+=paletes
+                saldos[chave]['ENTRADAS_QTD']+=qtd
+                saldos[chave]['SALDO_PALETES']+=paletes
+                saldos[chave]['SALDO_QTD']+=qtd
+            else:
+                saldos[chave]['SAIDAS_PALETES']+=paletes
+                saldos[chave]['SAIDAS_QTD']+=qtd
+                saldos[chave]['SALDO_PALETES']-=paletes
+                saldos[chave]['SALDO_QTD']-=qtd
+
     return saldos
 
 st.markdown("""
@@ -94,7 +202,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown("<h1 style='text-align:center; background:#000; color:#00ff66; padding:18px; border-radius:12px; border:4px solid #ff4e00; font-family:Arial Black;'>🔥 REFORMA DE FORNOS - UNIDADE DINÂMICA 🔥</h1>", unsafe_allow_html=True)
+st.markdown(f"<h1 style='text-align:center; background:#000; color:#00ff66; padding:18px; border-radius:12px; border:4px solid #ff4e00; font-family:Arial Black;'>🔥 {st.session_state.local_acesso} | {agora_br.strftime('%d/%m/%Y %H:%M')} Brasília 🔥</h1>", unsafe_allow_html=True)
 
 tab1,tab2,tab3,tab4,tab5=st.tabs(["📝 CADASTRO","🔄 ENTRADA/SAIDA POR PALETES","📦 ESTOQUE","📊 LOTES - BARRAS VALIDADE","📈 GRAFICOS"])
 
@@ -106,6 +214,7 @@ with tab1:
             desc_in=st.text_input("DESCRIÇÃO*","CIMENTO FONDU")
             marca_in=st.text_input("MARCA*","FONDU")
             lote_in=st.text_input("LOTE*","999999999")
+            local_in=st.selectbox("LOCAL DO CADASTRO*", [LOCAL_GALPAO, LOCAL_OFICINA], index=0)
         with c2:
             fab_in=st.date_input("DATA FABRICAÇÃO*", value=date.today())
             tempo_in=st.number_input("TEMPO VALIDADE MESES*", value=12, min_value=1)
@@ -124,17 +233,19 @@ with tab1:
                 "ID":str(id_in).strip(),"DESCRICAO":str(desc_in).upper().strip(),"MARCA":str(marca_in).upper().strip(),
                 "LOTE":str(lote_in).strip(),"FABRICACAO":fab_str,"TEMPO_VALIDADE":int(safe_float(tempo_in,12)),"VALIDO_ATE":valido_ate,
                 "QTD_PALETE":safe_float(qtd_in),"ENTRADA":safe_float(ent_in),"TOTAL":total,"UNIDADE":str(unidade_in).upper(),
+                "LOCAL":local_in,
                 "DATA_CADASTRO":date.today().strftime("%d/%m/%Y")
             })
             pd.DataFrame(st.session_state.lista_cadastro).to_csv(ARQ_CAD,index=False)
-            st.success(f"✅ LOTE {lote_in} - {ent_in:.1f} PALETES = {total:.0f} {unidade_in}"); st.rerun()
+            st.success(f"✅ LOTE {lote_in} em {local_in} - {ent_in:.1f} PALETES = {total:.0f} {unidade_in}"); st.rerun()
 
 with tab2:
-    st.markdown("### 🔄 MOVIMENTAÇÃO POR PALETES - UNIDADE DO CADASTRO")
+    st.markdown("### 🔄 MOVIMENTAÇÃO POR PALETES - LÓGICA AUTOMÁTICA GALPÃO <-> OFICINA")
+    st.info(f"**REGRA:** Entrada na OFICINA = sai do GALPÃO (total não muda) | Saída do GALPÃO = vai pra OFICINA | Saída da OFICINA = uso real desconta TOTAL | Entrada no GALPÃO = compra real aumenta TOTAL")
     if not st.session_state.get('lista_cadastro'):
         st.warning("Cadastre primeiro")
     else:
-        lotes_disponiveis=[str(r.get('LOTE','')) for r in st.session_state.lista_cadastro if r.get('LOTE')]
+        lotes_disponiveis=list(set([str(r.get('LOTE','')) for r in st.session_state.lista_cadastro if r.get('LOTE')]))
         c1,c2,c3=st.columns(3)
         with c1:
             lote_mov=st.selectbox("LOTE*", options=lotes_disponiveis, key="sel_lote_mov")
@@ -146,6 +257,7 @@ with tab2:
                     unidade_base=str(r.get('UNIDADE','KG')).upper() or "KG"
                     break
             st.info(f"QTD/PALETE: {qtd_por_palete_base:.0f} {unidade_base}")
+            local_mov=st.selectbox("LOCAL DA MOVIMENTAÇÃO*", [LOCAL_GALPAO, LOCAL_OFICINA], key="sel_local_mov")
         with c2:
             tipo_mov=st.selectbox("TIPO*", ["SAIDA","ENTRADA"], key="sel_tipo_mov")
             paletes_mov=st.number_input("QTD PALETES*", value=1.0, min_value=0.1, step=0.5, key="num_paletes_mov")
@@ -154,36 +266,100 @@ with tab2:
         with c3:
             motivo=st.text_input("MOTIVO*","REFORMA FORNO", key="txt_motivo")
             saldos=get_saldos_completos()
-            saldo_atual=saldos.get(str(lote_mov),{})
+            chave_atual = f"{lote_mov}__{local_mov}"
+            saldo_atual=saldos.get(chave_atual,{})
             if saldo_atual:
                 unid=saldo_atual.get('UNIDADE','KG')
-                st.metric(f"SALDO PALETES", f"{safe_float(saldo_atual.get('SALDO_PALETES',0)):.1f}")
-                st.metric(f"SALDO {unid}", f"{safe_float(saldo_atual.get('SALDO_QTD',0)):,.0f} {unid}")
-        if st.button(f"✅ REGISTRAR", type="primary", use_container_width=True, key="btn_reg_mov"):
-            if tipo_mov=="SAIDA" and saldo_atual and safe_float(saldo_atual.get('SALDO_PALETES',0))<safe_float(paletes_mov):
-                st.error(f"⛔ SALDO INSUFICIENTE! Saldo: {safe_float(saldo_atual.get('SALDO_PALETES',0)):.1f} PALETES")
-            else:
+                st.metric(f"SALDO PALETES em {local_mov}", f"{safe_float(saldo_atual.get('SALDO_PALETES',0)):.1f}")
+                st.metric(f"SALDO {unid} em {local_mov}", f"{safe_float(saldo_atual.get('SALDO_QTD',0)):,.0f} {unid}")
+
+        if st.button(f"✅ CONFIRMAR REGISTRO", type="primary", use_container_width=True, key="btn_reg_mov"):
+            # Validação saldo
+            if tipo_mov=="SAIDA" and local_mov==LOCAL_GALPAO:
+                # Verifica saldo no galpão
+                if saldo_atual and safe_float(saldo_atual.get('SALDO_PALETES',0))<safe_float(paletes_mov):
+                    st.error(f"⛔ SALDO INSUFICIENTE NO GALPÃO! Saldo: {safe_float(saldo_atual.get('SALDO_PALETES',0)):.1f}")
+                    st.stop()
+            if tipo_mov=="SAIDA" and local_mov==LOCAL_OFICINA:
+                if saldo_atual and safe_float(saldo_atual.get('SALDO_PALETES',0))<safe_float(paletes_mov):
+                    st.error(f"⛔ SALDO INSUFICIENTE NA OFICINA! Saldo: {safe_float(saldo_atual.get('SALDO_PALETES',0)):.1f}")
+                    st.stop()
+
+            # LÓGICA AUTOMÁTICA
+            if local_mov==LOCAL_OFICINA and tipo_mov=="ENTRADA":
+                # TRANSFERÊNCIA: Sai do GALPÃO e entra na OFICINA
+                # 1 - Baixa no GALPÃO
                 st.session_state.lista_mov.append({
-                    "LOTE":str(lote_mov),"TIPO":tipo_mov,"PALETES":safe_float(paletes_mov),"QTD_POR_PALETE":safe_float(qtd_por_palete_base),
-                    "TOTAL_QTD":safe_float(total_qtd_mov),"UNIDADE":unidade_base,"MOTIVO":motivo,"DATA":date.today().strftime("%d/%m/%Y"),"HORA":datetime.now().strftime("%H:%M")
+                    "LOTE":str(lote_mov),"TIPO":"SAIDA","PALETES":safe_float(paletes_mov),"QTD_POR_PALETE":safe_float(qtd_por_palete_base),
+                    "TOTAL_QTD":safe_float(total_qtd_mov),"UNIDADE":unidade_base,"MOTIVO":f"AUTO TRANSFER -> {motivo}","DATA":date.today().strftime("%d/%m/%Y"),"HORA":datetime.now().strftime("%H:%M"),
+                    "LOCAL_MOV":LOCAL_GALPAO,"OBS":f"TRANSFERÊNCIA AUTO: {LOCAL_GALPAO} -> {LOCAL_OFICINA} | Total Geral não muda"
                 })
-                pd.DataFrame(st.session_state.lista_mov).to_csv(ARQ_MOV,index=False)
-                st.success(f"✅ {tipo_mov} {paletes_mov:.1f} PALETES = {total_qtd_mov:,.0f} {unidade_base}"); st.rerun()
+                # 2 - Entra na OFICINA
+                st.session_state.lista_mov.append({
+                    "LOTE":str(lote_mov),"TIPO":"ENTRADA","PALETES":safe_float(paletes_mov),"QTD_POR_PALETE":safe_float(qtd_por_palete_base),
+                    "TOTAL_QTD":safe_float(total_qtd_mov),"UNIDADE":unidade_base,"MOTIVO":motivo,"DATA":date.today().strftime("%d/%m/%Y"),"HORA":datetime.now().strftime("%H:%M"),
+                    "LOCAL_MOV":LOCAL_OFICINA,"OBS":f"TRANSFERÊNCIA AUTO: {LOCAL_GALPAO} -> {LOCAL_OFICINA} | Total Geral não muda"
+                })
+                st.success(f"✅ TRANSFERIDO {paletes_mov:.1f} PAL = {total_qtd_mov:.0f} {unidade_base} GALPÃO -> OFICINA")
+
+            elif local_mov==LOCAL_GALPAO and tipo_mov=="SAIDA":
+                # MESMA TRANSFERÊNCIA AO CONTRÁRIO
+                st.session_state.lista_mov.append({
+                    "LOTE":str(lote_mov),"TIPO":"SAIDA","PALETES":safe_float(paletes_mov),"QTD_POR_PALETE":safe_float(qtd_por_palete_base),
+                    "TOTAL_QTD":safe_float(total_qtd_mov),"UNIDADE":unidade_base,"MOTIVO":f"AUTO TRANSFER -> {motivo}","DATA":date.today().strftime("%d/%m/%Y"),"HORA":datetime.now().strftime("%H:%M"),
+                    "LOCAL_MOV":LOCAL_GALPAO,"OBS":f"TRANSFERÊNCIA AUTO: {LOCAL_GALPAO} -> {LOCAL_OFICINA} | Total Geral não muda"
+                })
+                st.session_state.lista_mov.append({
+                    "LOTE":str(lote_mov),"TIPO":"ENTRADA","PALETES":safe_float(paletes_mov),"QTD_POR_PALETE":safe_float(qtd_por_palete_base),
+                    "TOTAL_QTD":safe_float(total_qtd_mov),"UNIDADE":unidade_base,"MOTIVO":motivo,"DATA":date.today().strftime("%d/%m/%Y"),"HORA":datetime.now().strftime("%H:%M"),
+                    "LOCAL_MOV":LOCAL_OFICINA,"OBS":f"TRANSFERÊNCIA AUTO: {LOCAL_GALPAO} -> {LOCAL_OFICINA} | Total Geral não muda"
+                })
+                st.success(f"✅ TRANSFERIDO {paletes_mov:.1f} PAL = {total_qtd_mov:.0f} {unidade_base} GALPÃO -> OFICINA")
+
+            elif local_mov==LOCAL_OFICINA and tipo_mov=="SAIDA":
+                # SAIDA REAL
+                st.session_state.lista_mov.append({
+                    "LOTE":str(lote_mov),"TIPO":"SAIDA","PALETES":safe_float(paletes_mov),"QTD_POR_PALETE":safe_float(qtd_por_palete_base),
+                    "TOTAL_QTD":safe_float(total_qtd_mov),"UNIDADE":unidade_base,"MOTIVO":motivo,"DATA":date.today().strftime("%d/%m/%Y"),"HORA":datetime.now().strftime("%H:%M"),
+                    "LOCAL_MOV":LOCAL_OFICINA,"OBS":f"SAÍDA REAL: Descontou da OFICINA e do TOTAL GERAL"
+                })
+                st.warning(f"✅ SAÍDA REAL OFICINA - Descontou TOTAL GERAL")
+
+            else: # GALPÃO ENTRADA - COMPRA REAL
+                st.session_state.lista_mov.append({
+                    "LOTE":str(lote_mov),"TIPO":"ENTRADA","PALETES":safe_float(paletes_mov),"QTD_POR_PALETE":safe_float(qtd_por_palete_base),
+                    "TOTAL_QTD":safe_float(total_qtd_mov),"UNIDADE":unidade_base,"MOTIVO":motivo,"DATA":date.today().strftime("%d/%m/%Y"),"HORA":datetime.now().strftime("%H:%M"),
+                    "LOCAL_MOV":LOCAL_GALPAO,"OBS":f"ENTRADA REAL: Compra - Aumentou GALPÃO e TOTAL GERAL"
+                })
+                st.success(f"✅ COMPRA REAL GALPÃO - Aumentou TOTAL GERAL")
+
+            pd.DataFrame(st.session_state.lista_mov).to_csv(ARQ_MOV,index=False)
+            st.rerun()
+
         if st.session_state.get('lista_mov'):
-            st.dataframe(pd.DataFrame(st.session_state.lista_mov), use_container_width=True)
+            st.dataframe(pd.DataFrame(st.session_state.lista_mov).sort_values(by="DATA", ascending=False), use_container_width=True)
 
 with tab3:
-    st.markdown("### 📦 ESTOQUE - UNIDADE DINÂMICA")
+    st.markdown("### 📦 ESTOQUE - GALPÃO vs OFICINA - UNIDADE DINÂMICA")
     if not st.session_state.get('lista_cadastro'): st.warning("Sem cadastro")
     else:
         saldos=get_saldos_completos()
-        html="""<table class="tabela"><tr><th>ID</th><th>DESCRIÇÃO</th><th>LOTE</th><th>FAB</th><th>VÁLIDO ATÉ</th><th>UNIDADE</th><th>QTD/PAL</th><th>ENT PAL</th><th>SAI PAL</th><th>SALDO PAL</th><th>ENT QTD</th><th>SAI QTD</th><th>SALDO QTD</th><th>STATUS</th></tr>"""
-        for lote,r in saldos.items():
+        # Monta tabela pivot por LOTE
+        html="""<table class="tabela"><tr><th>LOTE</th><th>ID</th><th>DESCRIÇÃO</th><th>LOCAL</th><th>FAB</th><th>VÁLIDO ATÉ</th><th>UNIDADE</th><th>QTD/PAL</th><th>ENT PAL</th><th>SAI PAL</th><th>SALDO PAL</th><th>SALDO QTD</th><th>TOTAL GERAL</th><th>STATUS</th></tr>"""
+        # Calcula total geral por lote
+        total_por_lote={}
+        for chave,r in saldos.items():
+            lote=r.get('LOTE_ORIG')
+            total_por_lote[lote]=total_por_lote.get(lote,0)+safe_float(r.get('SALDO_QTD',0))
+
+        for chave,r in saldos.items():
+            lote=r.get('LOTE_ORIG')
             saldo_qtd=safe_float(r.get('SALDO_QTD',0))
             saldo_pal=safe_float(r.get('SALDO_PALETES',0))
             unidade=str(r.get('UNIDADE','KG')).upper()
             qtd_base=safe_float(r.get('QTD_PALETE_BASE',0) or r.get('QTD_PALETE',0),0)
-            html+=f"<tr><td><b>{r.get('ID','')}</b></td><td>{r.get('DESCRICAO','')}</td><td class='lote'>{lote}</td><td class='fab'><b>{r.get('FABRICACAO','')}</b></td><td class='val'><b>{r.get('VALIDO_ATE','')}</b></td><td style='background:#ffcc99;'><b>{unidade}</b></td><td>{qtd_base:,.0f}</td><td style='background:#a0ffa0;'>{safe_float(r.get('ENTRADAS_PALETES',0)):.1f}</td><td style='background:#ffb0b0;'>{safe_float(r.get('SAIDAS_PALETES',0)):.1f}</td><td style='background:#7fff7f;'><b>{saldo_pal:.1f}</b></td><td style='background:#a0ffa0;'>{safe_float(r.get('ENTRADAS_QTD',0)):,.0f}</td><td style='background:#ffb0b0;'>{safe_float(r.get('SAIDAS_QTD',0)):,.0f}</td><td style='background:#7fff7f;'><b>{saldo_qtd:,.0f} {unidade}</b></td><td>{'✅ OK' if saldo_qtd>0 else '⛔ ZERADO'}</td></tr>"
+            local=r.get('LOCAL','')
+            html+=f"<tr><td class='lote'>{lote}</td><td><b>{r.get('ID','')}</b></td><td>{r.get('DESCRICAO','')}</td><td style='background:#ffcc99;'><b>{local}</b></td><td class='fab'><b>{r.get('FABRICACAO','')}</b></td><td class='val'><b>{r.get('VALIDO_ATE','')}</b></td><td style='background:#ffcc99;'><b>{unidade}</b></td><td>{qtd_base:,.0f}</td><td style='background:#a0ffa0;'>{safe_float(r.get('ENTRADAS_PALETES',0)):.1f}</td><td style='background:#ffb0b0;'>{safe_float(r.get('SAIDAS_PALETES',0)):.1f}</td><td style='background:#7fff7f;'><b>{saldo_pal:.1f}</b></td><td style='background:#7fff7f;'><b>{saldo_qtd:,.0f} {unidade}</b></td><td><b>{total_por_lote.get(lote,0):,.0f} {unidade}</b></td><td>{'✅ OK' if saldo_qtd>0 else '⛔ ZERADO'}</td></tr>"
         html+="</table>"
         st.markdown(html, unsafe_allow_html=True)
 
@@ -207,17 +383,22 @@ with tab4:
             saldos=get_saldos_completos()
             st.success(f"ID {id_sel} - {lotes[0].get('DESCRICAO')} - {len(lotes)} LOTES")
             st.markdown('<div style="background:#000; color:#fff; padding:8px; text-align:center; font-family:Arial Black; margin-top:20px; border:3px solid #00ff66;">📊 GRAFICO DE BARRAS - VALIDADE - FUNDO VERDE</div><div class="fundo-verde">', unsafe_allow_html=True)
-            max_t=max([safe_float(saldos.get(str(r.get('LOTE')),{}).get('SALDO_QTD',0)) for r in lotes]) or 1
+            max_t=max([safe_float(v.get('SALDO_QTD',0)) for v in saldos.values()]) or 1
             for i,r in enumerate(sorted(lotes, key=lambda x: str(x.get('LOTE','')))):
-                lote=str(r.get('LOTE')); saldo_qtd=safe_float(saldos.get(lote,{}).get('SALDO_QTD',0)); unidade=str(saldos.get(lote,{}).get('UNIDADE','KG'))
+                lote=str(r.get('LOTE'))
+                # Soma dos dois locais para barra
+                saldo_g = saldos.get(f"{lote}__{LOCAL_GALPAO}",{})
+                saldo_o = saldos.get(f"{lote}__{LOCAL_OFICINA}",{})
+                saldo_qtd=safe_float(saldo_g.get('SALDO_QTD',0))+safe_float(saldo_o.get('SALDO_QTD',0))
+                saldo_pal=safe_float(saldo_g.get('SALDO_PALETES',0))+safe_float(saldo_o.get('SALDO_PALETES',0))
+                unidade=str(r.get('UNIDADE','KG'))
                 prop=30+(saldo_qtd/max_t*65) if max_t>0 else 50
                 cor=["azul","branca","cinza","branca"][i%4]
-                saldo_pal=safe_float(saldos.get(lote,{}).get('SALDO_PALETES',0))
-                st.markdown(f'<div class="barra {cor}" style="width:{prop:.1f}%;">LOTE {r.get("LOTE")} | VÁLIDO ATÉ {r.get("VALIDO_ATE")} | SALDO {saldo_qtd:,.0f} {unidade} ({saldo_pal:.1f} PAL)</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="barra {cor}" style="width:{prop:.1f}%;">LOTE {r.get("LOTE")} | VÁLIDO ATÉ {r.get("VALIDO_ATE")} | TOTAL {saldo_qtd:,.0f} {unidade} ({saldo_pal:.1f} PAL) | GALPÃO {safe_float(saldo_g.get("SALDO_QTD",0)):,.0f} | OFICINA {safe_float(saldo_o.get("SALDO_QTD",0)):,.0f}</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
 
 with tab5:
-    st.markdown("### 📈 GRAFICOS - UNIDADE DINÂMICA")
+    st.markdown("### 📈 GRAFICOS - GALPÃO vs OFICINA")
     if not st.session_state.get('lista_cadastro'):
         st.warning("Sem dados")
     else:
@@ -227,14 +408,12 @@ with tab5:
                 st.warning("Sem saldo")
             else:
                 lista=[]
-                for lote,d in saldos.items():
-                    # garante campos basicos
-                    desc=str(d.get('DESCRICAO','SEM DESC')).strip() or "SEM DESC"
-                    idv=str(d.get('ID','?')).strip() or "?"
+                for chave,d in saldos.items():
                     lista.append({
-                        "LOTE": str(lote),
-                        "DESCRICAO": desc,
-                        "ID": idv,
+                        "LOTE": str(d.get('LOTE_ORIG')),
+                        "DESCRICAO": str(d.get('DESCRICAO','SEM DESC')),
+                        "ID": str(d.get('ID','?')),
+                        "LOCAL": str(d.get('LOCAL')),
                         "VALIDO_ATE": str(d.get('VALIDO_ATE','00/00/0000')),
                         "UNIDADE": str(d.get('UNIDADE','KG')),
                         "SALDO_QTD": safe_float(d.get('SALDO_QTD',0)),
@@ -247,22 +426,15 @@ with tab5:
                 else:
                     c1,c2=st.columns(2)
                     with c1:
-                        fig1=px.bar(df, x='DESCRICAO', y='SALDO_QTD', color='ID', title="SALDO POR PRODUTO (NA UNIDADE CADASTRADA)", text='UNIDADE')
-                        fig1.update_traces(textposition='outside')
+                        fig1=px.bar(df, x='DESCRICAO', y='SALDO_QTD', color='LOCAL', barmode="group", title="SALDO POR LOCAL - GALPÃO vs OFICINA")
                         st.plotly_chart(fig1, use_container_width=True)
                     with c2:
-                        fig2=px.bar(df, x='LOTE', y='SALDO_PAL', color='VALIDO_ATE', title="SALDO PALETES X VALIDADE")
+                        fig2=px.bar(df, x='LOTE', y='SALDO_PAL', color='LOCAL', title="PALETES POR LOCAL")
                         fig2.update_layout(plot_bgcolor='#A8C5A2')
                         st.plotly_chart(fig2, use_container_width=True)
-                    fig3=px.bar(df, x='LOTE', y='SALDO_QTD', color='VALIDO_ATE', title="SALDO NA UNIDADE CADASTRADA X VALIDADE")
+                    fig3=px.bar(df, x='LOTE', y='SALDO_QTD', color='LOCAL', barmode="group", title="SALDO QTD vs LOCAL - TOTAL GERAL = GALPÃO + OFICINA")
                     fig3.update_layout(plot_bgcolor='#A8C5A2')
                     st.plotly_chart(fig3, use_container_width=True)
                     st.dataframe(df, use_container_width=True)
         except Exception as e:
             st.error(f"Erro grafico: {e}")
-            st.info("Mostrando tabela bruta para debug")
-            try:
-                saldos=get_saldos_completos()
-                st.dataframe(pd.DataFrame(list(saldos.values())))
-            except Exception as e2:
-                st.error(f"Erro tabela: {e2}")
