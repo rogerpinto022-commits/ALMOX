@@ -20,35 +20,26 @@ LOCAIS = [LOCAL_GALPAO, LOCAL_SALA, LOCAL_OFICINA]
 LOCAIS_ACESSO = ["AMBOS", LOCAL_GALPAO, LOCAL_SALA, LOCAL_OFICINA]
 
 def safe_float(v, d=0.0):
-    try:
-        return float(str(v).replace(",","."))
-    except:
-        return float(d)
+    try: return float(str(v).replace(",","."))
+    except: return float(d)
 
 def carregar(caminho):
-    if not os.path.exists(caminho):
-        return []
+    if not os.path.exists(caminho): return []
     try:
         df = pd.read_csv(caminho).fillna("")
         df.columns = [str(c).upper() for c in df.columns]
         return df.to_dict('records')
-    except:
-        return []
+    except: return []
 
-if 'cad' not in st.session_state:
-    st.session_state.cad = carregar(ARQ_CAD)
-if 'mov' not in st.session_state:
-    st.session_state.mov = carregar(ARQ_MOV)
-if 'grd' not in st.session_state:
-    st.session_state.grd = carregar(ARQ_GRD)
+if 'cad' not in st.session_state: st.session_state.cad = carregar(ARQ_CAD)
+if 'mov' not in st.session_state: st.session_state.mov = carregar(ARQ_MOV)
+if 'grd' not in st.session_state: st.session_state.grd = carregar(ARQ_GRD)
 
 if not os.path.exists(ARQ_EMAILS):
     pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin","LOCAL":"AMBOS","STATUS":"LIBERADO","NOME":"ADMIN"}]).to_csv(ARQ_EMAILS,index=False)
 
-if 'logado' not in st.session_state:
-    st.session_state.logado=False
-if 'usuario' not in st.session_state:
-    st.session_state.usuario=None
+if 'logado' not in st.session_state: st.session_state.logado=False
+if 'usuario' not in st.session_state: st.session_state.usuario=None
 
 if not st.session_state.logado:
     st.markdown("<h1 style='text-align:center; background:black; color:#00ff66; padding:20px; border-radius:12px;'>REFORMA DE FORNOS</h1>", unsafe_allow_html=True)
@@ -62,13 +53,11 @@ if not st.session_state.logado:
             st.session_state.logado=True
             st.session_state.usuario=u.iloc[0].to_dict()
             st.rerun()
-        else:
-            st.error("Invalido")
+        else: st.error("Invalido")
     st.stop()
 
 user = st.session_state.usuario
 is_admin = str(user.get('EMAIL','')).lower()=="admin@admin.com"
-
 st.sidebar.write(f"Logado: {user.get('NOME')}")
 if st.sidebar.button("Sair"):
     st.session_state.logado=False
@@ -84,8 +73,7 @@ def get_saldos():
     for r in st.session_state.cad:
         idp=str(r.get('ID','')).upper().strip()
         lote=str(r.get('LOTE','')).upper().strip()
-        if not idp or not lote:
-            continue
+        if not idp or not lote: continue
         local=str(r.get('LOCAL',LOCAL_GALPAO)).upper()
         if "SALA" in local: local=LOCAL_SALA
         elif "OFIC" in local: local=LOCAL_OFICINA
@@ -128,23 +116,12 @@ def excluir_estoque(idp, local, marca, lote):
 
 agora=datetime.now(fuso)
 st.title(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M')}")
-
-# TABS FIXOS - SEMPRE 9 - NUNCA QUEBRA
 tabs = st.tabs(["ADMIN","DASHBOARD","CADASTRO","MOVIMENTACAO","ESTOQUE","BUSCA ID","GRD","GRAFICOS","HISTORICO"])
-tab_admin = tabs[0]
-tab_dash = tabs[1]
-tab_cad = tabs[2]
-tab_mov = tabs[3]
-tab_est = tabs[4]
-tab_busca = tabs[5]
-tab_grd = tabs[6]
-tab_graf = tabs[7]
-tab_hist = tabs[8]
+tab_admin, tab_dash, tab_cad, tab_mov, tab_est, tab_busca, tab_grd, tab_graf, tab_hist = tabs
 
 with tab_admin:
     st.header("1 - ADMINISTRACAO")
-    if not is_admin:
-        st.warning("Apenas admin@admin.com acessa aqui")
+    if not is_admin: st.warning("Apenas admin")
     else:
         with st.form("form_user_admin"):
             email_new=st.text_input("Email novo")
@@ -152,15 +129,14 @@ with tab_admin:
             senha_new=st.text_input("Senha")
             local_new=st.selectbox("Local acesso", LOCAIS_ACESSO)
             status_new=st.selectbox("Status", ["LIBERADO","BLOQUEADO"])
-            if st.form_submit_button("SALVAR USUARIO", type="primary"):
+            if st.form_submit_button("SALVAR", type="primary"):
                 if email_new and senha_new:
                     df=pd.read_csv(ARQ_EMAILS)
                     df=df[df['EMAIL'].astype(str).str.lower()!=email_new.lower()]
                     novo=pd.DataFrame([{"EMAIL":email_new.lower(),"SENHA":senha_new,"LOCAL":local_new,"STATUS":status_new,"NOME":nome_new.upper()}])
                     df=pd.concat([df,novo], ignore_index=True)
                     df.to_csv(ARQ_EMAILS,index=False)
-                    st.success("Usuario salvo")
-                    st.rerun()
+                    st.success("Salvo"); st.rerun()
         st.dataframe(pd.read_csv(ARQ_EMAILS), use_container_width=True)
 
 with tab_dash:
@@ -168,8 +144,7 @@ with tab_dash:
     saldos=get_saldos()
     lista=[v for v in saldos.values() if v['SALDO']>0]
     df=pd.DataFrame(lista) if lista else pd.DataFrame()
-    if df.empty:
-        st.warning("Sem estoque - cadastre na aba CADASTRO")
+    if df.empty: st.warning("Sem estoque")
     else:
         c1,c2,c3,c4=st.columns(4)
         with c1: st.metric("GERAL", f"{df['SALDO'].sum():,.0f}")
@@ -178,48 +153,68 @@ with tab_dash:
         with c4: st.metric("OFICINA", f"{df[df['LOCAL']==LOCAL_OFICINA]['SALDO'].sum():,.0f}")
         df_g=df.groupby('LOCAL', as_index=False)['SALDO'].sum()
         df_g['TEXTO']=df_g['SALDO'].apply(lambda x: f"{x:,.0f}")
-        fig=px.bar(df_g, x='LOCAL', y='SALDO', text='TEXTO', color='LOCAL', title="ESTOQUE POR LOCAL")
+        fig=px.bar(df_g, x='LOCAL', y='SALDO', text='TEXTO', color='LOCAL')
         fig.update_traces(textposition='inside', textfont=dict(size=30, color='white', family='Arial Black'))
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(df, use_container_width=True)
 
 with tab_cad:
-    st.header("3 - CADASTRO - AUTO PREENCHIMENTO ID")
-    id_in = st.text_input("DIGITE ID* - AUTO PREENCHE SE EXISTIR", key="id_cad_auto")
-    desc_auto = ""
-    marca_auto = ""
-    qtd_auto = 1250.0
+    st.header("3 - CADASTRO 100% AUTOMATICO - SO DIGITAR ID")
+    id_in = st.text_input("DIGITE ID* - SE JA EXISTE PREENCHE TUDO AUTOMATICO", key="id_cad_auto")
+    desc_auto = ""; marca_auto = ""; qtd_auto = 1250.0; lote_auto = ""; encontrou=False
     if id_in:
+        id_upper=id_in.upper().strip()
         for r in st.session_state.cad:
-            if str(r.get('ID','')).upper().strip() == id_in.upper().strip():
-                desc_auto = r.get('DESCRICAO','')
-                marca_auto = r.get('MARCA','')
-                qtd_auto = safe_float(r.get('QTD_PALETE',1250.0), 1250.0)
-                st.success(f"ID {id_in.upper()} ENCONTRADO: {desc_auto} | {marca_auto}")
-                break
-        else:
-            if id_in: st.info(f"ID {id_in.upper()} NOVO")
-    with st.form("form_cadastro_mat"):
-        st.text_input("ID CONFIRMADO", value=id_in.upper() if id_in else "", disabled=True)
-        desc_in=st.text_input("DESCRICAO* AUTO", value=desc_auto, key="desc_cad")
-        marca_in=st.text_input("MARCA* AUTO", value=marca_auto, key="marca_cad")
-        lote_in=st.text_input("LOTE OPCIONAL", key="lote_cad")
-        locais_sel=st.multiselect("LOCAIS PARA CADASTRAR* (VARIOS)", LOCAIS, default=[LOCAL_GALPAO], key="locais_cad")
-        qtd_in=st.number_input("QTD POR PALETE AUTO", value=qtd_auto, key="qtd_cad")
-        ent_in=st.number_input("PALETES POR LOCAL - 0=SO CADASTRO", value=0.0, key="ent_cad")
-        if st.form_submit_button("CADASTRAR NOS LOCAIS", type="primary"):
-            if not id_in or not desc_in or not marca_in:
-                st.error("Preencha ID, DESCRICAO e MARCA")
-            elif not locais_sel:
-                st.error("Selecione 1 LOCAL")
-            else:
-                for local_cad in locais_sel:
-                    total=qtd_in*ent_in
-                    st.session_state.cad.append({"ID":id_in.upper(),"DESCRICAO":desc_in.upper(),"MARCA":marca_in.upper(),"LOTE":lote_in.upper(),"QTD_PALETE":qtd_in,"ENTRADA":ent_in,"TOTAL":total,"LOCAL":local_cad,"FABRICACAO":date.today().strftime("%d/%m/%Y")})
-                pd.DataFrame(st.session_state.cad).to_csv(ARQ_CAD,index=False)
-                st.success(f"Cadastrado em {len(locais_sel)} locais")
-                st.rerun()
+            if str(r.get('ID','')).upper().strip()==id_upper:
+                desc_auto=r.get('DESCRICAO',''); marca_auto=r.get('MARCA',''); qtd_auto=safe_float(r.get('QTD_PALETE',1250.0),1250.0); lote_auto=r.get('LOTE',''); encontrou=True; break
+
+    if encontrou:
+        st.success(f"✅ ID {id_in.upper()} JA CADASTRADO - MODO AUTOMATICO")
+        st.info(f"📦 {desc_auto} | 🏭 {marca_auto} | {qtd_auto} UN/PAL | LOTE BASE {lote_auto} - VOCE NAO PRECISA DIGITAR NADA")
+        with st.form("form_cadastro_auto"):
+            st.text_input("ID AUTOMATICO", value=id_in.upper(), disabled=True)
+            st.text_input("DESCRICAO AUTOMATICA", value=desc_auto, disabled=True)
+            st.text_input("MARCA AUTOMATICA", value=marca_auto, disabled=True)
+            st.text_input("QTD PALETE AUTOMATICA", value=str(qtd_auto), disabled=True)
+            lote_novo = st.text_input(f"LOTE - JA TEM {lote_auto} (deixe vazio para usar mesmo lote ou digite novo)", key="lote_novo_auto")
+            locais_sel=st.multiselect("SELECIONE LOCAIS* (VARIOS)", LOCAIS, default=[LOCAL_GALPAO], key="locais_cad_auto")
+            ent_in=st.number_input("PALETES POR LOCAL*", value=1.0, min_value=0.1, key="ent_cad_auto")
+            if st.form_submit_button("✅ CADASTRAR AUTOMATICO", type="primary", use_container_width=True):
+                if not locais_sel: st.error("Selecione 1 LOCAL")
+                else:
+                    lote_final = lote_novo.upper() if lote_novo else lote_auto
+                    if not lote_final: st.error("Sem LOTE - digite LOTE NOVO")
+                    else:
+                        for local_cad in locais_sel:
+                            total=qtd_auto*ent_in
+                            st.session_state.cad.append({"ID":id_in.upper(),"DESCRICAO":desc_auto.upper(),"MARCA":marca_auto.upper(),"LOTE":lote_final.upper(),"QTD_PALETE":qtd_auto,"ENTRADA":ent_in,"TOTAL":total,"LOCAL":local_cad,"FABRICACAO":date.today().strftime("%d/%m/%Y")})
+                        pd.DataFrame(st.session_state.cad).to_csv(ARQ_CAD,index=False)
+                        st.success(f"✅ {id_in.upper()} CADASTRADO AUTO em {len(locais_sel)} locais - {ent_in} pal cada")
+                        st.rerun()
+    else:
+        if id_in: st.warning(f"🆕 ID {id_in.upper()} NOVO - Cadastre primeira vez")
+        with st.form("form_cadastro_novo"):
+            st.text_input("ID", value=id_in.upper() if id_in else "", disabled=True, placeholder="Digite ID acima")
+            desc_in=st.text_input("DESCRICAO* PARA ID NOVO", key="desc_cad_novo")
+            marca_in=st.text_input("MARCA* PARA ID NOVO", key="marca_cad_novo")
+            lote_in=st.text_input("LOTE* OBRIGATORIO", key="lote_cad_novo")
+            locais_sel=st.multiselect("LOCAIS* (VARIOS)", LOCAIS, default=[LOCAL_GALPAO], key="locais_cad_novo")
+            qtd_in=st.number_input("QTD POR PALETE*", value=1250.0, key="qtd_cad_novo")
+            ent_in=st.number_input("PALETES POR LOCAL", value=0.0, key="ent_cad_novo2")
+            if st.form_submit_button("CADASTRAR NOVO", type="primary"):
+                if not id_in: st.error("Digite ID em cima")
+                elif not desc_in or not marca_in or not lote_in: st.error("Preencha DESCRICAO MARCA LOTE")
+                elif not locais_sel: st.error("Selecione LOCAL")
+                else:
+                    for local_cad in locais_sel:
+                        total=qtd_in*ent_in
+                        st.session_state.cad.append({"ID":id_in.upper(),"DESCRICAO":desc_in.upper(),"MARCA":marca_in.upper(),"LOTE":lote_in.upper(),"QTD_PALETE":qtd_in,"ENTRADA":ent_in,"TOTAL":total,"LOCAL":local_cad,"FABRICACAO":date.today().strftime("%d/%m/%Y")})
+                    pd.DataFrame(st.session_state.cad).to_csv(ARQ_CAD,index=False)
+                    st.success(f"NOVO {id_in.upper()} cadastrado"); st.rerun()
+    st.divider()
+    filtro_cad = st.text_input("FILTRAR LISTA", key="filtro_cad_lista")
     for i,r in enumerate(st.session_state.cad):
+        if filtro_cad and filtro_cad.upper() not in str(r.get('ID','')).upper() and filtro_cad.upper() not in str(r.get('DESCRICAO','')).upper(): continue
         c1,c2=st.columns([4,1])
         with c1: st.write(f"{r.get('LOCAL')} | ID {r.get('ID')} - {r.get('DESCRICAO')} - {r.get('MARCA')} - LOTE {r.get('LOTE')}")
         with c2:
@@ -229,11 +224,10 @@ with tab_cad:
                 st.rerun()
 
 with tab_mov:
-    st.header("4 - MOVIMENTACAO - AUTO PREENCHE ID")
+    st.header("4 - MOVIMENTACAO AUTOMATICA")
     ids_raw = [str(r.get('ID','')).strip().upper() for r in st.session_state.cad if str(r.get('ID','')).strip()!='']
     ids = sorted(list(set(ids_raw)))
-    if not ids:
-        st.warning("Cadastre na aba CADASTRO")
+    if not ids: st.warning("Cadastre antes")
     else:
         id_sel=st.selectbox("ID* AUTO", options=ids, key="id_mov")
         cat=None
@@ -245,23 +239,22 @@ with tab_mov:
         st.text_input("Descricao Auto", value=desc, disabled=True, key="desc_mov")
         st.text_input("Marca Auto", value=marca_cat, disabled=True, key="marca_cat_mov")
         lote=st.text_input("LOTE* OBRIGATORIO", key="lote_mov")
-        marca=st.text_input("MARCA* AUTO EDITAVEL", value=marca_cat, key="marca_mov")
+        marca=st.text_input("MARCA AUTO EDITAVEL", value=marca_cat, key="marca_mov")
         local_sel=st.selectbox("LOCAL*", LOCAIS, key="local_mov")
         tipo=st.selectbox("TIPO*", ["ENTRADA","SAIDA"], key="tipo_mov")
         pal=st.number_input("PALETES*", value=1.0, min_value=0.1, key="pal_mov")
         if lote:
             tot=pal*qtd_cat
             if local_sel==LOCAL_GALPAO and tipo=="ENTRADA": st.success(f"ENTRADA GALPAO +{tot:,.0f}")
-            elif local_sel==LOCAL_GALPAO and tipo=="SAIDA": st.warning(f"SAIDA GALPAO -{tot:,.0f} + OFICINA +{tot:,.0f} AUTO")
-            elif local_sel==LOCAL_SALA and tipo=="ENTRADA": st.info(f"ENTRADA SALA: GALPAO -{tot:,.0f} + SALA +{tot:,.0f} AUTO")
-            elif local_sel==LOCAL_SALA and tipo=="SAIDA": st.warning(f"SAIDA SALA -{tot:,.0f} + OFICINA +{tot:,.0f} AUTO")
+            elif local_sel==LOCAL_GALPAO and tipo=="SAIDA": st.warning(f"SAIDA GALPAO -{tot:,.0f} + OFICINA +{tot:,.0f}")
+            elif local_sel==LOCAL_SALA and tipo=="ENTRADA": st.info(f"ENTRADA SALA GALPAO -{tot:,.0f} + SALA +{tot:,.0f}")
+            elif local_sel==LOCAL_SALA and tipo=="SAIDA": st.warning(f"SAIDA SALA -{tot:,.0f} + OFICINA +{tot:,.0f}")
             elif local_sel==LOCAL_OFICINA and tipo=="ENTRADA": st.success(f"ENTRADA OFICINA +{tot:,.0f}")
-            else: st.error(f"SAIDA OFICINA -{tot:,.0f} CONSUMO")
-        if st.button("CONFIRMAR FLUXO AUTOMATICO", type="primary", use_container_width=True, key="btn_mov"):
+            else: st.error(f"SAIDA OFICINA -{tot:,.0f}")
+        if st.button("CONFIRMAR", type="primary", use_container_width=True, key="btn_mov"):
             if not lote: st.error("LOTE obrigatorio")
             else:
-                hoje=date.today().strftime("%d/%m/%Y")
-                tot=pal*qtd_cat
+                hoje=date.today().strftime("%d/%m/%Y"); tot=pal*qtd_cat
                 if local_sel==LOCAL_GALPAO and tipo=="ENTRADA":
                     st.session_state.mov.append({"ID":id_sel,"LOTE":lote.upper(),"MARCA":marca.upper(),"DESCRICAO":desc,"TIPO":"ENTRADA","PALETES":pal,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_GALPAO,"DATA":hoje})
                 elif local_sel==LOCAL_GALPAO and tipo=="SAIDA":
@@ -278,17 +271,14 @@ with tab_mov:
                 else:
                     st.session_state.mov.append({"ID":id_sel,"LOTE":lote.upper(),"MARCA":marca.upper(),"DESCRICAO":desc,"TIPO":"SAIDA","PALETES":pal,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_OFICINA,"DATA":hoje})
                 pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
-                st.success("OK")
-                st.rerun()
-    if st.session_state.mov:
-        st.dataframe(pd.DataFrame(st.session_state.mov).tail(20), use_container_width=True)
+                st.success("OK"); st.rerun()
+    if st.session_state.mov: st.dataframe(pd.DataFrame(st.session_state.mov).tail(20), use_container_width=True)
 
 with tab_est:
-    st.header("5 - ESTOQUE COM EXCLUIR")
+    st.header("5 - ESTOQUE")
     saldos=get_saldos()
     lista=[{'ID':v['ID'],'DESCRICAO':v['DESCRICAO'],'LOTE':v['LOTE'],'MARCA':v['MARCA'],'LOCAL':v['LOCAL'],'SALDO':v['SALDO'],'PAL':v['PAL']} for v in saldos.values() if v['SALDO']>0]
-    if not lista:
-        st.info("Sem estoque")
+    if not lista: st.info("Sem estoque")
     else:
         df=pd.DataFrame(lista)
         c1,c2,c3,c4=st.columns(4)
@@ -306,8 +296,7 @@ with tab_est:
             with c6: st.write(f"{v['PAL']:.1f}")
             with c7:
                 if st.button("Excluir", key=f"del_est_{idx}_{v['ID']}_{v['LOTE']}_{v['LOCAL']}"):
-                    excluir_estoque(v['ID'], v['LOCAL'], v['MARCA'], v['LOTE'])
-                    st.rerun()
+                    excluir_estoque(v['ID'], v['LOCAL'], v['MARCA'], v['LOTE']); st.rerun()
 
 with tab_busca:
     st.header("6 - BUSCA ID")
@@ -319,7 +308,7 @@ with tab_busca:
             df=pd.DataFrame([{'LOCAL':v['LOCAL'],'LOTE':v['LOTE'],'MARCA':v['MARCA'],'SALDO':v['SALDO']} for v in lista])
             df['TEXTO']=df['SALDO'].apply(lambda x: f"{x:,.0f}")
             st.dataframe(df, use_container_width=True)
-            fig=px.bar(df, x='LOCAL', y='SALDO', text='TEXTO', color='LOCAL', title=f"ID {id_b}")
+            fig=px.bar(df, x='LOCAL', y='SALDO', text='TEXTO', color='LOCAL')
             fig.update_traces(textposition='inside', textfont=dict(size=28, color='white', family='Arial Black'))
             st.plotly_chart(fig, use_container_width=True)
 
@@ -351,29 +340,25 @@ with tab_grd:
                 st.session_state.mov.append({"ID":id_g,"LOTE":lote.upper(),"MARCA":marca.upper(),"DESCRICAO":desc,"TIPO":"SAIDA","PALETES":qtd,"TOTAL_QTD":tot,"LOCAL_MOV":ori,"DATA":date.today().strftime("%d/%m/%Y")})
                 st.session_state.mov.append({"ID":id_g,"LOTE":lote.upper(),"MARCA":marca.upper(),"DESCRICAO":desc,"TIPO":"ENTRADA","PALETES":qtd,"TOTAL_QTD":tot,"LOCAL_MOV":dst,"DATA":date.today().strftime("%d/%m/%Y")})
                 pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
-                st.success(f"GRD {num}")
-                st.rerun()
-    if st.session_state.grd:
-        st.dataframe(pd.DataFrame(st.session_state.grd), use_container_width=True)
+                st.success(f"GRD {num}"); st.rerun()
+    if st.session_state.grd: st.dataframe(pd.DataFrame(st.session_state.grd), use_container_width=True)
 
 with tab_graf:
     st.header("8 - GRAFICOS")
     saldos=get_saldos()
     lista=[{'ID':v['ID'],'DESCRICAO':v['DESCRICAO'],'LOCAL':v['LOCAL'],'MARCA':v['MARCA'],'LOTE':v['LOTE'],'SALDO':v['SALDO'],'PAL':v['PAL']} for v in saldos.values() if v['SALDO']>0]
     df=pd.DataFrame(lista)
-    if df.empty:
-        st.info("Sem estoque")
+    if df.empty: st.info("Sem estoque")
     else:
         df_local=df.groupby('LOCAL', as_index=False)['SALDO'].sum()
         df_local['TEXTO']=df_local['SALDO'].apply(lambda x: f"{x:,.0f}")
-        fig=px.bar(df_local, x='LOCAL', y='SALDO', text='TEXTO', color='LOCAL', title="POR LOCAL")
+        fig=px.bar(df_local, x='LOCAL', y='SALDO', text='TEXTO', color='LOCAL')
         fig.update_traces(textposition='inside', textfont=dict(size=32, color='white', family='Arial Black'))
         st.plotly_chart(fig, use_container_width=True)
 
 with tab_hist:
     st.header("9 - HISTORICO")
-    if not st.session_state.mov:
-        st.warning("Sem movimentacoes")
+    if not st.session_state.mov: st.warning("Sem movimentacoes")
     else:
         df_mov=pd.DataFrame(st.session_state.mov)
         def parse_data(d):
@@ -383,7 +368,7 @@ with tab_hist:
         df_mov['QTD']=df_mov['TOTAL_QTD'].apply(lambda x: safe_float(x))
         df_g=df_mov.groupby('DATA', as_index=False)['QTD'].sum()
         df_g['TEXTO']=df_g['QTD'].apply(lambda x: f"{x:,.0f}")
-        fig=px.bar(df_g, x='DATA', y='QTD', text='TEXTO', title="HISTORICO POR DIA")
+        fig=px.bar(df_g, x='DATA', y='QTD', text='TEXTO')
         fig.update_traces(textposition='inside', textfont=dict(size=20, color='white', family='Arial Black'))
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(df_mov.sort_values(by='DATA_DT', ascending=False), use_container_width=True)
