@@ -6,7 +6,7 @@ from dateutil.relativedelta import relativedelta
 import plotly.express as px
 import streamlit.components.v1 as components
 
-st.set_page_config(page_title="REFORMA DE FORNOS V7", layout="wide", page_icon="🔥")
+st.set_page_config(page_title="REFORMA DE FORNOS V8", layout="wide", page_icon="🔥")
 fuso = timezone(timedelta(hours=-3))
 ARQ_CAD = "cadastro_refratario.csv"
 ARQ_MOV = "movimentacao.csv"
@@ -135,57 +135,68 @@ def buscar_por_id(id_digitado):
     except: pass
     return resultados
 
-st.markdown(f"<h1 style='text-align:center; background:#000; color:#00ff66; padding:18px; border-radius:12px; border:4px solid #ff4e00;'>🔥 REFORMA DE FORNOS - {st.session_state.local_acesso} | {agora_br.strftime('%d/%m/%Y %H:%M')} Brasília 🔥</h1>", unsafe_allow_html=True)
+st.markdown(f"<h1 style='text-align:center; background:#000; color:#00ff66; padding:18px; border-radius:12px; border:4px solid #ff4e00;'>🔥 REFORMA DE FORNOS | {agora_br.strftime('%d/%m/%Y %H:%M')} | MULTILOCAL 🔥</h1>", unsafe_allow_html=True)
 tab1,tab2,tab3,tab4,tab5=st.tabs(["📝 CADASTRO","🔄 ENTRADA/SAIDA","📦 ESTOQUE","📊 BUSCA POR ID","📈 GRAFICOS"])
 
 with tab1:
-    st.subheader("📝 CADASTRO - AUTO PREENCHIMENTO POR ID + DESCRIÇÃO")
-    id_digitado_cad = st.text_input("🔍 Digite o ID para puxar último cadastro", placeholder="Ex: 1", key="id_busca_cad")
-    desc_default=""; marca_default=""; qtd_default=1250.0; unidade_default="KG"; tempo_default=12; local_default=LOCAL_GALPAO; fab_default=date.today()
+    st.subheader("📝 CADASTRO - SELECIONE ONDE CADASTRAR")
+    id_digitado_cad = st.text_input("🔍 Digite o ID para puxar", placeholder="Ex: 1", key="id_busca_cad")
+    desc_default=""; marca_default=""; qtd_default=1250.0; unidade_default="KG"; tempo_default=12; fab_default=date.today()
     if id_digitado_cad:
         ultimo = get_catalogo_por_id(id_digitado_cad)
         if ultimo:
             desc_default=ultimo.get('DESCRICAO',''); marca_default=ultimo.get('MARCA','')
-            qtd_default=safe_float(ultimo.get('QTD_PALETE',1250),1250); unidade_default=ultimo.get('UNIDADE','KG')
-            tempo_default=int(safe_float(ultimo.get('TEMPO_VALIDADE',12),12)); local_default=ultimo.get('LOCAL',LOCAL_GALPAO)
-            st.success(f"✅ ID {id_digitado_cad} - DESCRIÇÃO: {desc_default} | Marca {marca_default}")
-    with st.form("form_cad", clear_on_submit=False):
-        c1,c2,c3=st.columns(3)
+            qtd_default=safe_float(ultimo.get('QTD_PALETE',1250),1250)
+            st.success(f"✅ ID {id_digitado_cad} - {desc_default}")
+
+    with st.form("form_cad_multilocal", clear_on_submit=False):
+        c1,c2=st.columns([2,1])
         with c1:
             id_in=st.text_input("ID*", value=id_digitado_cad.upper() if id_digitado_cad else "1")
-            desc_in=st.text_input("DESCRIÇÃO* (mostra em tudo)", value=desc_default, placeholder="Ex: CIMENTO FONDU")
+            desc_in=st.text_input("DESCRIÇÃO*", value=desc_default)
             marca_in=st.text_input("MARCA*", value=marca_default)
             lote_in=st.text_input("LOTE (OPCIONAL)", value="")
-            local_in=st.selectbox("LOCAL*", LOCAIS, index=LOCAIS.index(local_default) if local_default in LOCAIS else 0)
         with c2:
+            st.markdown("### 📍 ONDE CADASTRAR?")
+            check_galpao = st.checkbox(LOCAL_GALPAO, value=True)
+            check_sala = st.checkbox(LOCAL_SALA, value=False)
+            check_oficina = st.checkbox(LOCAL_OFICINA, value=False)
+
+        c3,c4,c5=st.columns(3)
+        with c3:
             fab_in=st.date_input("FABRICAÇÃO*", value=fab_default)
             tempo_in=st.number_input("VALIDADE MESES*", value=tempo_default, min_value=1)
+        with c4:
             unidade_in=st.selectbox("UNIDADE*", ["KG","UNIDADE","SACO","BLOCO","TIJOLO","LATA","CAIXA","METRO","LITRO"], index=0)
             qtd_in=st.number_input(f"QTD/PALETE*", value=float(qtd_default))
-        with c3:
-            ent_in=st.number_input("QTD PALETES (se tiver lote)", value=0.0)
-            if safe_float(qtd_in)>0 and safe_float(ent_in)>0:
-                st.metric(f"TOTAL", f"{safe_float(qtd_in)*safe_float(ent_in):,.0f}")
-        if st.form_submit_button("💾 CADASTRAR", type="primary", use_container_width=True):
+        with c5:
+            ent_in=st.number_input("QTD PALETES", value=0.0)
+
+        locais_selecionados = []
+        if check_galpao: locais_selecionados.append(LOCAL_GALPAO)
+        if check_sala: locais_selecionados.append(LOCAL_SALA)
+        if check_oficina: locais_selecionados.append(LOCAL_OFICINA)
+
+        if locais_selecionados:
+            st.info(f"📍 Vai cadastrar em: {', '.join(locais_selecionados)}")
+
+        if st.form_submit_button(f"💾 CADASTRAR EM {len(locais_selecionados)} LOCAL(IS)", type="primary", use_container_width=True):
             if not id_in.strip() or not desc_in.strip() or not marca_in.strip():
                 st.error("ID, Descrição e Marca obrigatórios")
+            elif not locais_selecionados:
+                st.error("Selecione pelo menos 1 local")
             else:
                 fab_str=fab_in.strftime("%d/%m/%Y"); valido=calcular_valido_ate(fab_str, tempo_in)
                 total=safe_float(qtd_in)*safe_float(ent_in) if lote_in.strip() else 0
-                st.session_state.lista_cadastro.append({"ID":id_in.strip().upper(),"DESCRICAO":desc_in.upper().strip(),"MARCA":marca_in.upper().strip(),"LOTE":lote_in.strip().upper(),"FABRICACAO":fab_str,"TEMPO_VALIDADE":int(tempo_in),"VALIDO_ATE":valido,"QTD_PALETE":safe_float(qtd_in),"ENTRADA":safe_float(ent_in),"TOTAL":total,"UNIDADE":unidade_in.upper(),"LOCAL":local_in,"DATA_CADASTRO":date.today().strftime("%d/%m/%Y")})
+                for local_sel in locais_selecionados:
+                    st.session_state.lista_cadastro.append({"ID":id_in.strip().upper(),"DESCRICAO":desc_in.upper().strip(),"MARCA":marca_in.upper().strip(),"LOTE":lote_in.strip().upper(),"FABRICACAO":fab_str,"TEMPO_VALIDADE":int(tempo_in),"VALIDO_ATE":valido,"QTD_PALETE":safe_float(qtd_in),"ENTRADA":safe_float(ent_in),"TOTAL":total,"UNIDADE":unidade_in.upper(),"LOCAL":local_sel,"DATA_CADASTRO":date.today().strftime("%d/%m/%Y")})
                 pd.DataFrame(st.session_state.lista_cadastro).to_csv(ARQ_CAD,index=False)
-                st.success(f"✅ ID {id_in} - {desc_in} salvo!"); st.rerun()
-    if st.session_state.lista_cadastro:
-        df_cad = pd.DataFrame(st.session_state.lista_cadastro)
-        st.dataframe(df_cad[['ID','DESCRICAO','MARCA','LOTE','LOCAL','QTD_PALETE','UNIDADE']], use_container_width=True)
+                st.success(f"✅ ID {id_in} - {desc_in} em {len(locais_selecionados)} locais"); st.rerun()
 
 with tab2:
-    st.subheader("🔄 MOVIMENTAÇÃO - DESCRIÇÃO AUTOMÁTICA")
+    st.subheader("🔄 MOVIMENTAÇÃO")
     ids_disponiveis = sorted(list(set([str(r.get('ID','')).strip().upper() for r in st.session_state.lista_cadastro if r.get('ID')])))
-    id_busca_mov = st.text_input("🔍 DIGITE O ID PARA PUXAR DESCRIÇÃO", placeholder="Ex: 1", key="busca_id_mov")
-    if id_busca_mov:
-        cat = get_catalogo_por_id(id_busca_mov)
-        if cat: st.info(f"ID {id_busca_mov} -> DESCRIÇÃO: {cat.get('DESCRICAO')} | {cat.get('QTD_PALETE')} {cat.get('UNIDADE')}/PAL")
+    id_busca_mov = st.text_input("🔍 DIGITE O ID", placeholder="Ex: 1", key="busca_id_mov")
     if not ids_disponiveis: st.warning("Cadastre ID primeiro")
     else:
         c1,c2,c3=st.columns(3)
@@ -195,7 +206,7 @@ with tab2:
             desc_mov_auto = catalogo.get('DESCRICAO','') if catalogo else ""
             st.text_input("DESCRIÇÃO (auto)", value=desc_mov_auto, disabled=True)
             marcas_do_id = sorted(list(set([str(r.get('MARCA','')).upper() for r in st.session_state.lista_cadastro if str(r.get('ID','')).upper()==id_mov_sel.upper()])))
-            lote_mov = st.text_input(f"LOTE* (obrigatório aqui)", placeholder="Ex: LOTE001")
+            lote_mov = st.text_input(f"LOTE* (obrigatório aqui)")
             marca_mov=st.selectbox("MARCA*", options=marcas_do_id if marcas_do_id else ["SEM MARCA"])
             qtd_base=safe_float(catalogo.get('QTD_PALETE',1250),1250) if catalogo else 1250
             unidade_base=catalogo.get('UNIDADE','KG') if catalogo else "KG"
@@ -213,7 +224,7 @@ with tab2:
             motivo=st.text_input("MOTIVO*","REFORMA FORNO")
         if st.button("✅ CONFIRMAR", type="primary", use_container_width=True):
             if not lote_mov.strip():
-                st.error("LOTE obrigatório na movimentação")
+                st.error("LOTE obrigatório")
             else:
                 desc_final = catalogo.get('DESCRICAO','') if catalogo else ""
                 if tipo_mov=="ENTRADA":
@@ -227,26 +238,22 @@ with tab2:
                 st.success(f"✅ {desc_final} OK"); st.rerun()
 
 with tab3:
-    st.subheader("📦 ESTOQUE - COM DESCRIÇÃO")
     saldos=get_saldos_completos()
     df_estoque=[{"ID":r.get('ID'),"DESCRIÇÃO":r.get('DESCRICAO'),"LOTE":r.get('LOTE_ORIG'),"MARCA":r.get('MARCA'),"LOCAL":r.get('LOCAL'),"FAB":r.get('FABRICACAO'),"SALDO PAL":safe_float(r.get('SALDO_PALETES',0)),"SALDO QTD":safe_float(r.get('SALDO_QTD',0))} for r in saldos.values() if safe_float(r.get('SALDO_QTD',0))>0]
     df=pd.DataFrame(df_estoque)
-    if not df.empty:
-        st.dataframe(df, use_container_width=True, height=600)
+    if not df.empty: st.dataframe(df.sort_values(by=['ID','LOCAL']), use_container_width=True, height=600)
     else: st.info("Sem estoque")
 
 with tab4:
-    st.subheader("📊 BUSCA POR ID - COM DESCRIÇÃO")
     id_busca = st.text_input("🔍 Digite o ID", key="busca_tab4")
     if id_busca:
         dados = buscar_por_id(id_busca)
         cat = get_catalogo_por_id(id_busca)
         desc_busca = cat.get('DESCRICAO','') if cat else (dados[0].get('DESCRICAO','') if dados else "")
-        if not dados:
-            st.warning(f"ID {id_busca} - {desc_busca} sem saldo")
+        if not dados: st.warning(f"ID {id_busca} - {desc_busca} sem saldo")
         else:
-            df_busca = pd.DataFrame([{"ID": d.get('ID'),"DESCRIÇÃO": d.get('DESCRICAO'),"LOTE": d.get('LOTE_ORIG'),"MARCA": d.get('MARCA'),"LOCAL": d.get('LOCAL'),"FAB": d.get('FABRICACAO'),"SALDO QTD": safe_float(d.get('SALDO_QTD',0)),"SALDO PAL": safe_float(d.get('SALDO_PALETES',0))} for d in dados])
-            st.success(f"ID {id_busca} - {desc_busca} | TOTAL: {df_busca['SALDO QTD'].sum():,.0f} | {len(df_busca)} lotes")
+            df_busca = pd.DataFrame([{"ID": d.get('ID'),"DESCRIÇÃO": d.get('DESCRICAO'),"LOTE": d.get('LOTE_ORIG'),"MARCA": d.get('MARCA'),"LOCAL": d.get('LOCAL'),"FAB": d.get('FABRICACAO'),"SALDO QTD": safe_float(d.get('SALDO_QTD',0))} for d in dados])
+            st.success(f"ID {id_busca} - {desc_busca} | TOTAL: {df_busca['SALDO QTD'].sum():,.0f}")
             st.dataframe(df_busca, use_container_width=True)
             fig = px.bar(df_busca, x='LOCAL', y='SALDO QTD', color='MARCA', barmode='group', title=f'ID {id_busca} - {desc_busca}')
             st.plotly_chart(fig, use_container_width=True)
@@ -257,5 +264,5 @@ with tab5:
     df=pd.DataFrame(lista)
     if not df.empty:
         df['ID_DESC'] = df['ID'] + " - " + df['DESCRIÇÃO']
-        fig1=px.bar(df, x='ID_DESC', y='SALDO_QTD', color='LOCAL', barmode="group", title="Saldo por ID + Descrição")
+        fig1=px.bar(df, x='ID_DESC', y='SALDO_QTD', color='LOCAL', barmode="group", title="Saldo por ID + Descrição - 3 locais")
         st.plotly_chart(fig1, use_container_width=True)
