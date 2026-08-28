@@ -221,27 +221,26 @@ with tab_cad:
         desc_in=st.text_input("DESCRICAO DO REFRATARIO* EX: TIJOLO ISOLANTE 230x114", value=desc_d, key="desc_cad")
         marca_in=st.text_input("MARCA / FABRICANTE*", value=marca_d, key="marca_cad")
         lote_in=st.text_input("LOTE INICIAL OPCIONAL", key="lote_cad")
-        locais_sel=st.multiselect("SELECIONE EM QUAIS LOCAIS CADASTRAR* (PODE MARCAR VARIOS LOCAIS)", LOCAIS, default=[LOCAL_GALPAO], key="locais_cad")
+        locais_sel=st.multiselect("SELECIONE EM QUAIS LOCAIS CADASTRAR* (PODE MARCAR VARIOS)", LOCAIS, default=[LOCAL_GALPAO], key="locais_cad")
         qtd_in=st.number_input("QTD UNIDADES POR PALETE", value=1250.0, key="qtd_cad")
-        ent_in=st.number_input("PALETES POR LOCAL SELECIONADO - 0=SO CADASTRO BASE SEM ESTOQUE", value=0.0, key="ent_cad")
+        ent_in=st.number_input("PALETES POR LOCAL - 0=SO CADASTRO", value=0.0, key="ent_cad")
         if st.form_submit_button("CADASTRAR NOS LOCAIS SELECIONADOS", type="primary"):
             if not id_in or not desc_in or not marca_in:
                 st.error("Preencha ID, DESCRICAO e MARCA")
             elif not locais_sel:
-                st.error("Selecione pelo menos 1 LOCAL para cadastrar")
+                st.error("Selecione pelo menos 1 LOCAL")
             else:
                 for local_cad in locais_sel:
                     total=qtd_in*ent_in
                     st.session_state.cad.append({"ID":id_in.upper(),"DESCRICAO":desc_in.upper(),"MARCA":marca_in.upper(),"LOTE":lote_in.upper(),"QTD_PALETE":qtd_in,"ENTRADA":ent_in,"TOTAL":total,"LOCAL":local_cad,"FABRICACAO":date.today().strftime("%d/%m/%Y")})
                 pd.DataFrame(st.session_state.cad).to_csv(ARQ_CAD,index=False)
-                st.success(f"Material {id_in} - {desc_in} cadastrado em {len(locais_sel)} local(is): {', '.join(locais_sel)} com {ent_in} paletes em cada")
+                st.success(f"Material {id_in} cadastrado em {len(locais_sel)} local(is)")
                 st.rerun()
     st.divider()
-    st.write("Materiais cadastrados por local:")
     for i,r in enumerate(st.session_state.cad):
         if id_busca and id_busca.upper() not in str(r.get('ID','')).upper(): continue
         c1,c2=st.columns([4,1])
-        with c1: st.write(f"**LOCAL: {r.get('LOCAL')}** | ID {r.get('ID')} - {r.get('DESCRICAO')} - MARCA {r.get('MARCA')} - LOTE {r.get('LOTE')} - {r.get('QTD_PALETE')} UN/PAL - {r.get('ENTRADA')} PAL")
+        with c1: st.write(f"LOCAL: {r.get('LOCAL')} | ID {r.get('ID')} - {r.get('DESCRICAO')} - {r.get('MARCA')} - LOTE {r.get('LOTE')}")
         with c2:
             if st.button("Excluir", key=f"del_cad_{i}"):
                 st.session_state.cad.pop(i)
@@ -251,14 +250,16 @@ with tab_cad:
 with tab_mov:
     st.header("4 - MOVIMENTACAO COM FLUXO AUTOMATICO")
     st.info("FLUXO: ENTRADA GALPAO=SOMA GERAL | SAIDA GALPAO=OFICINA AUTO | ENTRADA SALA=DESCONTA GALPAO AUTO | SAIDA SALA=OFICINA AUTO | SAIDA OFICINA=CONSUMO FINAL")
-    ids=list(set([r.get('ID','') for r in st.session_state.cad if r.get('ID')]))
+    # CORRECAO DO ERRO AQUI
+    ids_raw = [str(r.get('ID','')).strip().upper() for r in st.session_state.cad if str(r.get('ID','')).strip()!='']
+    ids = sorted(list(set(ids_raw)))
     if not ids:
         st.warning("Cadastre material primeiro na aba CADASTRO")
     else:
-        id_sel=st.selectbox("ID DO MATERIAL*", options=sorted(ids), key="id_mov")
+        id_sel=st.selectbox("ID DO MATERIAL*", options=ids, key="id_mov")
         cat=None
         for r in st.session_state.cad:
-            if r.get('ID')==id_sel: cat=r; break
+            if str(r.get('ID','')).upper()==id_sel: cat=r; break
         desc=cat.get('DESCRICAO','') if cat else ""
         st.text_input("Descricao", value=desc, disabled=True, key="desc_mov")
         lote=st.text_input("LOTE* OBRIGATORIO NASCE AQUI", key="lote_mov")
@@ -350,12 +351,13 @@ with tab_busca:
 
 with tab_grd:
     st.header("7 - GRD GUIA REMESSA")
-    ids=list(set([r.get('ID','') for r in st.session_state.cad if r.get('ID')]))
-    if ids:
-        id_g=st.selectbox("ID PARA GRD", options=sorted(ids), key="id_grd")
+    ids_raw2 = [str(r.get('ID','')).strip().upper() for r in st.session_state.cad if str(r.get('ID','')).strip()!='']
+    ids2 = sorted(list(set(ids_raw2)))
+    if ids2:
+        id_g=st.selectbox("ID PARA GRD", options=ids2, key="id_grd")
         cat=None
         for r in st.session_state.cad:
-            if r.get('ID')==id_g: cat=r; break
+            if str(r.get('ID','')).upper()==id_g: cat=r; break
         desc=cat.get('DESCRICAO','') if cat else ""
         st.text_input("Descricao", value=desc, disabled=True, key="desc_grd")
         lote=st.text_input("LOTE GRD*", key="lote_grd")
@@ -409,13 +411,6 @@ with tab_graf:
         fig3.update_traces(textposition='inside', textfont=dict(size=20, color='white', family='Arial Black'))
         st.plotly_chart(fig3, use_container_width=True)
 
-        fig_pie=px.pie(df_local, values='SALDO', names='LOCAL', title="DISTRIBUICAO % POR LOCAL")
-        fig_pie.update_traces(textinfo='value+percent+label', textfont_size=20)
-        st.plotly_chart(fig_pie, use_container_width=True)
-
-        fig_tree=px.treemap(df, path=['LOCAL','ID','LOTE'], values='SALDO', title="TREEMAP LOCAL > ID > LOTE - TAMANHO = QTD")
-        st.plotly_chart(fig_tree, use_container_width=True)
-
 with tab_hist:
     st.header("9 - HISTORICO DIA / SEMANA / MES / ANO")
     if not st.session_state.mov:
@@ -446,11 +441,6 @@ with tab_hist:
         fig.update_layout(height=600)
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(df_g, use_container_width=True)
-        df_local_hist=df_f.groupby('LOCAL_MOV', as_index=False)['QTD'].sum()
-        df_local_hist['TEXTO']=df_local_hist['QTD'].apply(lambda x: f"{x:,.0f}")
-        fig_local=px.bar(df_local_hist, x='LOCAL_MOV', y='QTD', text='TEXTO', title=f"TOTAL {filtro_tipo} POR LOCAL - NUMEROS GRANDES", color='LOCAL_MOV')
-        fig_local.update_traces(textposition='inside', textfont=dict(size=26, color='white', family='Arial Black'))
-        st.plotly_chart(fig_local, use_container_width=True)
         st.dataframe(df_mov.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=300)
 
 st.caption(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M')}")
