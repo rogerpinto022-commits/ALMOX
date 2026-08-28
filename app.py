@@ -159,7 +159,7 @@ def get_saldo_sala_com_quarentena():
 
 agora=datetime.now(fuso)
 st.title(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M:%S')}")
-tabs = st.tabs(["ADMIN","DASHBOARD","CADASTRO","MOVIMENTACAO","ESTOQUE","BUSCA ID","GRD SALA ANEXA 48H IDS INDIVIDUAIS","GRAFICOS","HISTORICO"])
+tabs = st.tabs(["ADMIN","DASHBOARD","CADASTRO","MOVIMENTACAO","ESTOQUE","BUSCA ID","GRD SALA ANEXA","GRAFICOS","HISTORICO COM FILTRO ID E ENTRADA/SAIDA"])
 tab_admin, tab_dash, tab_cad, tab_mov, tab_est, tab_busca, tab_grd, tab_graf, tab_hist = tabs
 
 with tab_admin:
@@ -183,25 +183,14 @@ with tab_admin:
         st.dataframe(pd.read_csv(ARQ_EMAILS), use_container_width=True)
 
 with tab_dash:
-    st.header("2 - DASHBOARD SALA ANEXA INDIVIDUAL POR ID + DATA/HORA ATUALIZACAO")
-    total_sala, pendente_sala, disp_sala = get_saldo_sala_com_quarentena()
-    df_total = pd.DataFrame(list(total_sala.values())) if total_sala else pd.DataFrame()
-    df_disp = pd.DataFrame(list(disp_sala.values())) if disp_sala else pd.DataFrame()
-    if not df_total.empty:
-        st.subheader("📦 ESTOQUE SALA ANEXA - INDIVIDUAL POR ID - COM DATA/HORA ULTIMA ATUALIZACAO")
-        # Mostra individual por ID
-        df_ind = df_total.copy()
-        df_ind['DATA_HORA_ATUALIZACAO'] = df_ind['ULT_ATUAL']
-        df_ind['HORA_ATUAL'] = agora.strftime("%d/%m/%Y %H:%M:%S")
-        st.dataframe(df_ind[['ID','DESCRICAO','LOTE','MARCA','SALDO','PAL','QTD_PAL','LOCAL','DATA_HORA_ATUALIZACAO']].sort_values(by='ID'), use_container_width=True)
-        # Agrupa por ID individual
-        df_por_id = df_total.groupby(['ID','DESCRICAO'], as_index=False)['SALDO'].sum()
-        df_por_id['TEXTO']=df_por_id['SALDO'].apply(lambda x: f"{x:,.0f}")
-        fig=px.bar(df_por_id, x='ID', y='SALDO', text='TEXTO', color='ID', title="SALA ANEXA - ESTOQUE INDIVIDUAL POR ID - NUMEROS GRANDES")
-        fig.update_traces(textposition='inside', textfont=dict(size=20, color='white', family='Arial Black'))
+    st.header("2 - DASHBOARD")
+    saldos=get_saldos()
+    lista=[v for v in saldos.values() if v['SALDO']>0]
+    df=pd.DataFrame(lista) if lista else pd.DataFrame()
+    if not df.empty:
+        df_g=df.groupby('LOCAL', as_index=False)['SALDO'].sum()
+        fig=px.bar(df_g, x='LOCAL', y='SALDO', color='LOCAL')
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.warning("Sem estoque SALA ANEXA")
 
 with tab_cad:
     st.header("3 - CADASTRO AUTOMATICO")
@@ -212,11 +201,9 @@ with tab_cad:
             if str(r.get('ID','')).upper().strip()==id_in.upper().strip():
                 desc_auto=r.get('DESCRICAO',''); marca_auto=r.get('MARCA',''); qtd_auto=safe_float(r.get('QTD_PALETE',1250.0),1250.0); lote_auto=r.get('LOTE',''); encontrou=True; break
     if encontrou:
-        st.success(f"✅ ID {id_in.upper()} JA CADASTRADO {desc_auto} | {marca_auto}")
+        st.success(f"✅ ID {id_in.upper()} JA CADASTRADO {desc_auto}")
         with st.form("form_cadastro_auto"):
             st.text_input("ID", value=id_in.upper(), disabled=True)
-            st.text_input("DESCRICAO", value=desc_auto, disabled=True)
-            st.text_input("MARCA", value=marca_auto, disabled=True)
             lote_novo = st.text_input(f"LOTE BASE {lote_auto}", key="lote_novo_auto")
             locais_sel=st.multiselect("LOCAIS*", LOCAIS, default=[LOCAL_GALPAO], key="locais_cad_auto")
             ent_in=st.number_input("PALETES*", value=1.0, min_value=0.1, key="ent_cad_auto")
@@ -263,7 +250,7 @@ with tab_mov:
         local_sel=st.selectbox("LOCAL*", LOCAIS, key="local_mov")
         tipo=st.selectbox("TIPO*", ["ENTRADA","SAIDA"], key="tipo_mov")
         pal=st.number_input("PALETES*", value=1.0, min_value=0.1, key="pal_mov")
-        if st.button("CONFIRMAR COM DATA/HORA", type="primary", key="btn_mov"):
+        if st.button("CONFIRMAR", type="primary", key="btn_mov"):
             if lote:
                 agora_str = datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
                 tot=pal*qtd_cat
@@ -283,218 +270,260 @@ with tab_mov:
                 else:
                     st.session_state.mov.append({"ID":id_sel,"LOTE":lote.upper(),"MARCA":marca.upper(),"DESCRICAO":desc,"TIPO":"SAIDA","PALETES":pal,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_OFICINA,"DATA":agora_str.split(" ")[0],"DATA_HORA":agora_str})
                 pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
-                st.success(f"OK {agora_str}"); st.rerun()
+                st.success("OK"); st.rerun()
 
 with tab_est:
-    st.header("5 - ESTOQUE SALA ANEXA - IDS INDIVIDUAIS + DATA/HORA ATUALIZACAO")
-    total_sala, pendente_sala, disp_sala = get_saldo_sala_com_quarentena()
+    st.header("5 - ESTOQUE - IDS INDIVIDUAIS + DATA/HORA")
     saldos=get_saldos()
-    lista_sala=[v for v in saldos.values() if v['LOCAL']==LOCAL_SALA and v['SALDO']>0]
-    if lista_sala:
-        df=pd.DataFrame(lista_sala)
-        df['DATA_HORA_ULT_ATUALIZACAO']=df['ULT_ATUAL']
-        df['AGORA']=agora.strftime("%d/%m/%Y %H:%M:%S")
-        st.dataframe(df[['ID','DESCRICAO','LOTE','MARCA','SALDO','PAL','LOCAL','DATA_HORA_ULT_ATUALIZACAO','AGORA']].sort_values(by=['ID','LOTE']), use_container_width=True)
-        st.info("Cada ID (ex: 15 e 16) mostra separado mesmo sendo mesmo produto acabado")
+    lista=[v for v in saldos.values() if v['SALDO']>0]
+    if lista:
+        df=pd.DataFrame(lista)
+        st.dataframe(df.sort_values(by='ID'), use_container_width=True)
 
 with tab_busca:
-    st.header("6 - BUSCA ID")
-    id_b=st.text_input("ID BUSCA", key="id_busca")
+    st.header("6 - BUSCA ID - COM HISTORICO SEPARADO ENTRADA/SAIDA + DIA/SEMANA/MES/ANO")
+    id_b = st.text_input("DIGITE ID PARA BUSCA COMPLETA", key="id_busca_full")
     if id_b:
+        id_b_upper=id_b.upper().strip()
         saldos=get_saldos()
-        lista=[v for v in saldos.values() if v['ID']==id_b.upper() and v['SALDO']>0]
-        if lista:
-            df=pd.DataFrame(lista)
-            df['DATA_HORA_ATUALIZACAO']=df['ULT_ATUAL']
-            st.dataframe(df, use_container_width=True)
+        lista_saldo=[v for v in saldos.values() if v['ID']==id_b_upper and v['SALDO']>0]
+        if lista_saldo:
+            df_saldo=pd.DataFrame(lista_saldo)
+            st.dataframe(df_saldo, use_container_width=True)
+
+        mov_filtrado=[m for m in st.session_state.mov if str(m.get('ID','')).upper()==id_b_upper]
+        if mov_filtrado:
+            df_mov=pd.DataFrame(mov_filtrado)
+            df_mov['DATA_DT']=df_mov['DATA'].apply(lambda x: parse_data_hora(x))
+            df_mov['DIA']=df_mov['DATA_DT'].dt.strftime("%d/%m/%Y")
+            df_mov['SEMANA']=df_mov['DATA_DT'].dt.strftime("%Y-W%W")
+            df_mov['MES']=df_mov['DATA_DT'].dt.strftime("%m/%Y")
+            df_mov['ANO']=df_mov['DATA_DT'].dt.strftime("%Y")
+            df_mov['QTD']=df_mov['TOTAL_QTD'].apply(lambda x: safe_float(x))
+
+            c1,c2=st.columns(2)
+            with c1: tipo_periodo=st.selectbox(f"AGRUPAR ID {id_b_upper} POR", ["DIA","SEMANA","MES","ANO"], key=f"periodo_busca_{id_b_upper}")
+            with c2: tipo_filtro=st.selectbox(f"FILTRAR ID {id_b_upper} POR TIPO", ["TODOS","ENTRADA","SAIDA"], key=f"tipo_busca_{id_b_upper}")
+
+            df_f=df_mov.copy()
+            if tipo_filtro!="TODOS": df_f=df_f[df_f['TIPO']==tipo_filtro]
+
+            col_agrup = {'DIA':'DIA','SEMANA':'SEMANA','MES':'MES','ANO':'ANO'}[tipo_periodo]
+
+            df_ent=df_f[df_f['TIPO']=="ENTRADA"]
+            df_sai=df_f[df_f['TIPO']=="SAIDA"]
+
+            c1,c2,c3=st.columns(3)
+            with c1: st.metric(f"ENTRADAS ID {id_b_upper}", f"{df_ent['QTD'].sum():,.0f}")
+            with c2: st.metric(f"SAIDAS ID {id_b_upper}", f"{df_sai['QTD'].sum():,.0f}")
+            with c3: st.metric(f"SALDO ID {id_b_upper}", f"{df_ent['QTD'].sum()-df_sai['QTD'].sum():,.0f}")
+
+            # GRAFICO SEPARADO
+            df_g=df_f.groupby([col_agrup,'TIPO'], as_index=False)['QTD'].sum()
+            if not df_g.empty:
+                fig=px.bar(df_g, x=col_agrup, y='QTD', color='TIPO', barmode='group', title=f"ID {id_b_upper} POR {tipo_periodo} - {tipo_filtro}")
+                st.plotly_chart(fig, use_container_width=True)
+
+            col1,col2=st.columns(2)
+            with col1:
+                st.write(f"### 🟢 ENTRADAS ID {id_b_upper} POR {tipo_periodo}")
+                df_ent_g=df_ent.groupby(col_agrup, as_index=False)['QTD'].sum()
+                if not df_ent_g.empty:
+                    fig_ent=px.bar(df_ent_g, x=col_agrup, y='QTD', title=f"ENTRADAS ID {id_b_upper}")
+                    st.plotly_chart(fig_ent, use_container_width=True)
+                st.dataframe(df_ent_g, use_container_width=True)
+                st.dataframe(df_ent.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=200)
+
+            with col2:
+                st.write(f"### 🔴 SAIDAS ID {id_b_upper} POR {tipo_periodo}")
+                df_sai_g=df_sai.groupby(col_agrup, as_index=False)['QTD'].sum()
+                if not df_sai_g.empty:
+                    fig_sai=px.bar(df_sai_g, x=col_agrup, y='QTD', title=f"SAIDAS ID {id_b_upper}", color_discrete_sequence=['red'])
+                    st.plotly_chart(fig_sai, use_container_width=True)
+                st.dataframe(df_sai_g, use_container_width=True)
+                st.dataframe(df_sai.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=200)
 
 with tab_grd:
-    st.header(f"7 - GRD SALA ANEXA - IDS INDIVIDUAIS - ID 15 E 16 SEPARADOS - MESMO NUMERO GRD - REGRA {TEMPO_QUARENTENA_HORAS}H + DATA/HORA ATUALIZACAO")
-    st.info(f"REGRA: GRD so SALA ANEXA. IDs 15 e 16 sao produtos diferentes mas formam 1 produto acabado. No GRD pode mostrar mesmo numero GRD para ID 15 e ID 16, mas estoque SALA ANEXA mostra IDs separados. GRD considera so >{TEMPO_QUARENTENA_HORAS}H. Mostra DATA/HORA atualizacao.")
-
+    st.header(f"7 - GRD SALA ANEXA - IDS INDIVIDUAIS - REGRA {TEMPO_QUARENTENA_HORAS}H + DATA/HORA")
     total_sala, pendente_sala, disp_sala = get_saldo_sala_com_quarentena()
-    df_total = pd.DataFrame(list(total_sala.values())) if total_sala else pd.DataFrame()
-    df_pend = pd.DataFrame(list(pendente_sala.values())) if pendente_sala else pd.DataFrame()
     df_disp = pd.DataFrame(list(disp_sala.values())) if disp_sala else pd.DataFrame()
-
-    total_geral = df_total['SALDO'].sum() if not df_total.empty else 0
-    total_pend = df_pend['QTD_PENDENTE'].sum() if not df_pend.empty else 0
-    total_disp = df_disp['SALDO'].sum() if not df_disp.empty else 0
-
-    c1,c2,c3=st.columns(3)
-    with c1: st.metric("SALA TOTAL GERAL (todos IDs)", f"{total_geral:,.0f}")
-    with c2: st.metric(f"BLOQUEADO <{TEMPO_QUARENTENA_HORAS}H", f"{total_pend:,.0f}")
-    with c3: st.metric("DISPONIVEL >48H PARA GRD", f"{total_disp:,.0f}")
-
-    # ESTOQUE SALA ANEXA INDIVIDUAL POR ID - COM DATA/HORA ATUALIZACAO
-    st.subheader("📦 ESTOQUE SALA ANEXA - IDS INDIVIDUAIS SEPARADOS (ID 15 e 16 separados) + DATA/HORA ULTIMA ATUALIZACAO")
-    if not df_total.empty:
-        df_show = df_total.copy()
-        df_show['DATA_HORA_ULTIMA_ATUALIZACAO']=df_show['ULT_ATUAL']
-        df_show['DATA_HORA_AGORA']=agora.strftime("%d/%m/%Y %H:%M:%S")
-        df_show['STATUS_48H']=df_show['ID'].apply(lambda x: "PENDENTE <48H tem parte bloqueada" if any(p['ID']==x for p in pendente_sala.values()) else "LIBERADO >48H")
-        st.dataframe(df_show[['ID','DESCRICAO','LOTE','MARCA','SALDO','PAL','STATUS_48H','DATA_HORA_ULTIMA_ATUALIZACAO','DATA_HORA_AGORA','LOCAL']].sort_values(by='ID'), use_container_width=True)
-
-        # Agrupa individual por ID para mostrar
-        df_id_individual = df_total.groupby(['ID','DESCRICAO'], as_index=False).agg({'SALDO':'sum','PAL':'sum'}).sort_values(by='ID')
-        df_id_individual['TEXTO']=df_id_individual['SALDO'].apply(lambda x: f"{x:,.0f}")
-        df_id_individual['DATA_HORA_ATUALIZACAO']=agora.strftime("%d/%m/%Y %H:%M:%S")
-        st.write("### 📊 RESUMO INDIVIDUAL POR ID (ID 15 separado de ID 16) + DATA/HORA ATUALIZACAO")
-        st.dataframe(df_id_individual, use_container_width=True)
-        fig=px.bar(df_id_individual, x='ID', y='SALDO', text='TEXTO', color='ID', title="SALA ANEXA - IDS INDIVIDUAIS - 15 e 16 separados")
-        fig.update_traces(textposition='inside', textfont=dict(size=18, color='white', family='Arial Black'))
-        st.plotly_chart(fig, use_container_width=True)
-
-    # PENDENTES INDIVIDUAIS
-    if pendente_sala:
-        st.subheader(f"⏳ PENDENTES <{TEMPO_QUARENTENA_HORAS}H - INDIVIDUAL POR ID - COM DATA/HORA")
-        lista_pend=[]
-        for k,v in pendente_sala.items():
-            lista_pend.append({
-                'ID':v['ID'],
-                'DESCRICAO':v['DESCRICAO'],
-                'LOTE':v['LOTE'],
-                'MARCA':v['MARCA'],
-                'QTD_PENDENTE':v['QTD_PENDENTE'],
-                'DATA_ENTRADA':v['DATA_ENTRADA'],
-                'DATA_LIBERACAO':v['DATA_LIBERACAO'].strftime("%d/%m/%Y %H:%M:%S"),
-                'HORAS_RESTANTES':f"{v['HORAS_RESTANTES']:.1f}h",
-                'DATA_HORA_ATUALIZACAO':agora.strftime("%d/%m/%Y %H:%M:%S")
-            })
-        st.dataframe(pd.DataFrame(lista_pend).sort_values(by='ID'), use_container_width=True)
-
-    # DISPONIVEL PARA GRD INDIVIDUAL
-    st.subheader(f"✅ DISPONIVEL PARA GRD >{TEMPO_QUARENTENA_HORAS}H - IDS INDIVIDUAIS - ID 15 E 16 SEPARADOS")
     if not df_disp.empty:
-        df_disp_show = df_disp.copy()
-        df_disp_show['DATA_HORA_ULTIMA_ATUALIZACAO']=df_disp_show['ULT_ATUAL']
-        df_disp_show['DATA_HORA_AGORA']=agora.strftime("%d/%m/%Y %H:%M:%S")
-        st.dataframe(df_disp_show[['ID','DESCRICAO','LOTE','MARCA','SALDO','PAL','DATA_HORA_ULTIMA_ATUALIZACAO','DATA_HORA_AGORA']].sort_values(by='ID'), use_container_width=True)
-    else:
-        st.warning("Nenhum disponivel >48H")
+        df_disp['DATA_HORA_ATUALIZACAO']=agora.strftime("%d/%m/%Y %H:%M:%S")
+        st.dataframe(df_disp[['ID','DESCRICAO','LOTE','SALDO','DATA_HORA_ATUALIZACAO']].sort_values(by='ID'), use_container_width=True)
 
-    # GERAR GRD COM MESMO NUMERO PARA IDS DIFERENTES
-    st.divider()
-    st.subheader("🚚 GERAR GRD - MESMO NUMERO GRD PARA IDS DIFERENTES (ID 15 + ID 16 = mesmo produto acabado)")
-
+    # GRD conjunto mesmo numero
     ids_disponiveis_sala = sorted(list(set([v['ID'] for v in disp_sala.values()]))) if disp_sala else []
-
-    if not ids_disponiveis_sala:
-        st.error(f"Sem IDs liberados >{TEMPO_QUARENTENA_HORAS}H para GRD")
-    else:
-        st.success(f"IDs liberados na SALA ANEXA: {', '.join(ids_disponiveis_sala)} - Cada ID mostra separado, mas GRD pode usar mesmo numero")
-
-        # Opcao 1: GRD individual por ID
-        # Opcao 2: GRD conjunto mesmo numero para varios IDs
-        tipo_grd = st.radio("Tipo GRD", ["GRD INDIVIDUAL 1 ID por vez", "GRD CONJUNTO mesmo numero para VARIOS IDs (ex: ID 15 + ID 16 juntos)"], key="tipo_grd")
-
-        if tipo_grd == "GRD INDIVIDUAL 1 ID por vez":
-            id_g=st.selectbox("ID PARA GRD INDIVIDUAL", options=ids_disponiveis_sala, key="id_grd_sala_ind")
-            saldo_disp_id = [v for v in disp_sala.values() if v['ID']==id_g]
-            total_disp_id = sum([v['SALDO'] for v in saldo_disp_id])
-            st.info(f"ID {id_g} disponivel total: {total_disp_id:,.0f} UN")
-            lotes_disp = sorted(list(set([v['LOTE'] for v in saldo_disp_id])))
-            lote_sel = st.selectbox("LOTE", options=lotes_disp, key="lote_grd_ind")
-            saldo_lote = [v for v in saldo_disp_id if v['LOTE']==lote_sel][0]
-            qtd_pal_grd = st.number_input(f"PALETES MAX {saldo_lote['PAL']:.1f}", value=1.0, min_value=0.1, max_value=float(saldo_lote['PAL']+0.1), key="qtd_grd_ind")
-            os_g=st.text_input("OS/FORNO*", key="os_grd_ind")
-            if st.button("GERAR GRD INDIVIDUAL", type="primary", key="btn_grd_ind"):
+    if ids_disponiveis_sala:
+        tipo_grd = st.radio("Tipo GRD", ["INDIVIDUAL", "CONJUNTO MESMO NUMERO (ID 15+16)"], key="tipo_grd_main")
+        if tipo_grd=="INDIVIDUAL":
+            id_g=st.selectbox("ID", options=ids_disponiveis_sala, key="id_grd_ind2")
+            saldo_id=[v for v in disp_sala.values() if v['ID']==id_g]
+            lote_sel=st.selectbox("LOTE", options=sorted(list(set([v['LOTE'] for v in saldo_id]))), key="lote_grd_ind2")
+            saldo_lote=[v for v in saldo_id if v['LOTE']==lote_sel][0]
+            qtd=st.number_input(f"PALETES MAX {saldo_lote['PAL']:.1f}", value=1.0, key="qtd_grd_ind2")
+            os_g=st.text_input("OS*", key="os_grd_ind2")
+            if st.button("GERAR GRD INDIVIDUAL", type="primary", key="btn_grd_ind2"):
                 num=f"GRD-SALA-{agora.strftime('%Y%m%d%H%M%S')}"
-                tot= qtd_pal_grd * saldo_lote['QTD_PAL'] if saldo_lote['QTD_PAL']>0 else qtd_pal_grd*1250
-                st.session_state.grd.append({"NUM_GRD":num,"ID":id_g,"DESCRICAO":saldo_lote['DESCRICAO'],"LOTE":lote_sel.upper(),"MARCA":saldo_lote['MARCA'].upper(),"QTD_PALETES":qtd_pal_grd,"TOTAL_QTD":tot,"ORIGEM":LOCAL_SALA,"DESTINO":LOCAL_OFICINA,"OS":os_g,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S"),"DATA_HORA_ATUALIZACAO":agora.strftime("%d/%m/%Y %H:%M:%S"),"TIPO_GRD":"INDIVIDUAL"})
+                tot=qtd*saldo_lote['QTD_PAL'] if saldo_lote['QTD_PAL']>0 else qtd*1250
+                st.session_state.grd.append({"NUM_GRD":num,"ID":id_g,"DESCRICAO":saldo_lote['DESCRICAO'],"LOTE":lote_sel,"MARCA":saldo_lote['MARCA'],"QTD_PALETES":qtd,"TOTAL_QTD":tot,"ORIGEM":LOCAL_SALA,"DESTINO":LOCAL_OFICINA,"OS":os_g,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S"),"DATA_HORA_ATUALIZACAO":agora.strftime("%d/%m/%Y %H:%M:%S")})
                 pd.DataFrame(st.session_state.grd).to_csv(ARQ_GRD,index=False)
-                st.session_state.mov.append({"ID":id_g,"LOTE":lote_sel.upper(),"MARCA":saldo_lote['MARCA'].upper(),"DESCRICAO":saldo_lote['DESCRICAO'],"TIPO":"SAIDA","PALETES":qtd_pal_grd,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_SALA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
-                st.session_state.mov.append({"ID":id_g,"LOTE":lote_sel.upper(),"MARCA":saldo_lote['MARCA'].upper(),"DESCRICAO":saldo_lote['DESCRICAO'],"TIPO":"ENTRADA","PALETES":qtd_pal_grd,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_OFICINA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
+                st.session_state.mov.append({"ID":id_g,"LOTE":lote_sel,"MARCA":saldo_lote['MARCA'],"DESCRICAO":saldo_lote['DESCRICAO'],"TIPO":"SAIDA","PALETES":qtd,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_SALA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
+                st.session_state.mov.append({"ID":id_g,"LOTE":lote_sel,"MARCA":saldo_lote['MARCA'],"DESCRICAO":saldo_lote['DESCRICAO'],"TIPO":"ENTRADA","PALETES":qtd,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_OFICINA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
                 pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
-                st.success(f"GRD {num} ID {id_g} gerada {agora.strftime('%d/%m/%Y %H:%M:%S')}"); st.rerun()
-
-        else: # CONJUNTO MESMO NUMERO PARA VARIOS IDS
-            st.write("### GRD CONJUNTO - MESMO NUMERO PARA VARIOS IDS (ex: ID 15 = 100 UN + ID 16 = 100 UN, mesmo GRD, produto acabado)")
-            ids_multi = st.multiselect("SELECIONE VARIOS IDS PARA MESMO GRD (ex: 15 e 16)", options=ids_disponiveis_sala, default=ids_disponiveis_sala[:2] if len(ids_disponiveis_sala)>=2 else ids_disponiveis_sala, key="ids_grd_conjunto")
-
+                st.success(f"GRD {num}"); st.rerun()
+        else:
+            ids_multi=st.multiselect("IDS MESMO GRD (ex 15 e 16)", options=ids_disponiveis_sala, default=ids_disponiveis_sala[:2] if len(ids_disponiveis_sala)>=2 else ids_disponiveis_sala, key="ids_conj2")
             if ids_multi:
-                # Mostra cada ID individual com seu saldo
-                st.write("#### IDs selecionados - individual:")
+                qtds={}
                 for id_sel in ids_multi:
-                    saldo_id = [v for v in disp_sala.values() if v['ID']==id_sel]
-                    total_id = sum([v['SALDO'] for v in saldo_id])
-                    st.write(f"**ID {id_sel}: {total_id:,.0f} UN disponivel** - {saldo_id[0]['DESCRICAO'] if saldo_id else ''} - Ult atual: {saldo_id[0]['ULT_ATUAL'] if saldo_id else ''}")
-
-                # Para cada ID, escolher lote e qtd
-                qtds_por_id = {}
-                lotes_por_id = {}
-                for id_sel in ids_multi:
-                    saldo_id = [v for v in disp_sala.values() if v['ID']==id_sel]
-                    lotes_id = sorted(list(set([v['LOTE'] for v in saldo_id])))
-                    lote_id = st.selectbox(f"LOTE para ID {id_sel}", options=lotes_id, key=f"lote_conj_{id_sel}")
-                    lotes_por_id[id_sel]=lote_id
-                    saldo_lote = [v for v in saldo_id if v['LOTE']==lote_id][0]
-                    qtd = st.number_input(f"PALETES ID {id_sel} MAX {saldo_lote['PAL']:.1f} PAL ({saldo_lote['SALDO']:,.0f} UN)", value=1.0, min_value=0.1, max_value=float(saldo_lote['PAL']+0.1), key=f"qtd_conj_{id_sel}")
-                    qtds_por_id[id_sel]={'qtd_pal':qtd, 'saldo_lote':saldo_lote}
-
-                os_g=st.text_input("OS/FORNO DESTINO (mesmo para todos IDs)*", key="os_grd_conj")
-                obs=st.text_input("OBS produto acabado (ex: KIT FORNO 15+16)", key="obs_grd_conj")
-
-                if st.button(f"GERAR GRD CONJUNTO MESMO NUMERO PARA {len(ids_multi)} IDS - DATA/HORA {agora.strftime('%d/%m/%Y %H:%M:%S')}", type="primary", use_container_width=True, key="btn_grd_conj"):
-                    num_conjunto = f"GRD-SALA-CONJ-{agora.strftime('%Y%m%d%H%M%S')}"
+                    saldo_id=[v for v in disp_sala.values() if v['ID']==id_sel]
+                    lote_id=st.selectbox(f"LOTE ID {id_sel}", options=sorted(list(set([v['LOTE'] for v in saldo_id]))), key=f"lote_conj2_{id_sel}")
+                    saldo_lote=[v for v in saldo_id if v['LOTE']==lote_id][0]
+                    qtd=st.number_input(f"PAL ID {id_sel} MAX {saldo_lote['PAL']:.1f}", value=1.0, key=f"qtd_conj2_{id_sel}")
+                    qtds[id_sel]={'lote':lote_id,'saldo_lote':saldo_lote,'qtd':qtd}
+                os_g=st.text_input("OS*", key="os_conj2")
+                if st.button("GERAR GRD CONJUNTO MESMO NUMERO", type="primary", key="btn_conj2"):
+                    num=f"GRD-CONJ-{agora.strftime('%Y%m%d%H%M%S')}"
                     for id_sel in ids_multi:
-                        info = qtds_por_id[id_sel]
-                        saldo_lote = info['saldo_lote']
-                        qtd_pal = info['qtd_pal']
-                        tot = qtd_pal * saldo_lote['QTD_PAL'] if saldo_lote['QTD_PAL']>0 else qtd_pal*1250
-                        st.session_state.grd.append({
-                            "NUM_GRD":num_conjunto,
-                            "ID":id_sel,
-                            "DESCRICAO":saldo_lote['DESCRICAO'],
-                            "LOTE":lotes_por_id[id_sel].upper(),
-                            "MARCA":saldo_lote['MARCA'].upper(),
-                            "QTD_PALETES":qtd_pal,
-                            "TOTAL_QTD":tot,
-                            "ORIGEM":LOCAL_SALA,
-                            "DESTINO":LOCAL_OFICINA,
-                            "OS":os_g,
-                            "OBS":f"{obs} - CONJUNTO {len(ids_multi)} IDS MESMO GRD",
-                            "DATA":agora.strftime("%d/%m/%Y"),
-                            "DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S"),
-                            "DATA_HORA_ATUALIZACAO":agora.strftime("%d/%m/%Y %H:%M:%S"),
-                            "TIPO_GRD":f"CONJUNTO MESMO NUMERO - {len(ids_multi)} IDS"
-                        })
-                        st.session_state.mov.append({"ID":id_sel,"LOTE":lotes_por_id[id_sel].upper(),"MARCA":saldo_lote['MARCA'].upper(),"DESCRICAO":saldo_lote['DESCRICAO'],"TIPO":"SAIDA","PALETES":qtd_pal,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_SALA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
-                        st.session_state.mov.append({"ID":id_sel,"LOTE":lotes_por_id[id_sel].upper(),"MARCA":saldo_lote['MARCA'].upper(),"DESCRICAO":saldo_lote['DESCRICAO'],"TIPO":"ENTRADA","PALETES":qtd_pal,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_OFICINA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
-
+                        info=qtds[id_sel]
+                        tot=info['qtd']*info['saldo_lote']['QTD_PAL'] if info['saldo_lote']['QTD_PAL']>0 else info['qtd']*1250
+                        st.session_state.grd.append({"NUM_GRD":num,"ID":id_sel,"DESCRICAO":info['saldo_lote']['DESCRICAO'],"LOTE":info['lote'],"MARCA":info['saldo_lote']['MARCA'],"QTD_PALETES":info['qtd'],"TOTAL_QTD":tot,"ORIGEM":LOCAL_SALA,"DESTINO":LOCAL_OFICINA,"OS":os_g,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S"),"DATA_HORA_ATUALIZACAO":agora.strftime("%d/%m/%Y %H:%M:%S"),"TIPO_GRD":"CONJUNTO"})
+                        st.session_state.mov.append({"ID":id_sel,"LOTE":info['lote'],"MARCA":info['saldo_lote']['MARCA'],"DESCRICAO":info['saldo_lote']['DESCRICAO'],"TIPO":"SAIDA","PALETES":info['qtd'],"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_SALA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
+                        st.session_state.mov.append({"ID":id_sel,"LOTE":info['lote'],"MARCA":info['saldo_lote']['MARCA'],"DESCRICAO":info['saldo_lote']['DESCRICAO'],"TIPO":"ENTRADA","PALETES":info['qtd'],"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_OFICINA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
                     pd.DataFrame(st.session_state.grd).to_csv(ARQ_GRD,index=False)
                     pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False)
-                    st.success(f"✅ GRD CONJUNTO {num_conjunto} GERADA para {len(ids_multi)} IDS - Mesmo numero GRD - IDs: {', '.join(ids_multi)} - Data/Hora: {agora.strftime('%d/%m/%Y %H:%M:%S')}")
-                    st.rerun()
-
-    st.divider()
+                    st.success(f"GRD CONJUNTO {num} IDS {', '.join(ids_multi)}"); st.rerun()
     if st.session_state.grd:
-        st.subheader("📜 GRDs GERADAS - COM DATA/HORA ATUALIZACAO - IDS INDIVIDUAIS MAS MESMO NUMERO QUANDO CONJUNTO")
-        df_grd = pd.DataFrame(st.session_state.grd)
-        if 'DATA_HORA_ATUALIZACAO' not in df_grd.columns:
-            df_grd['DATA_HORA_ATUALIZACAO']=df_grd.get('DATA_HORA', df_grd.get('DATA',''))
-        st.dataframe(df_grd.sort_values(by='DATA_HORA', ascending=False), use_container_width=True)
-
-        # Resumo por NUM_GRD - mostra que mesmo numero tem varios IDs
-        if 'NUM_GRD' in df_grd.columns:
-            st.write("### 📊 RESUMO POR NUMERO GRD - Mostra mesmo numero com varios IDs (ex: ID 15 e 16 mesmo GRD)")
-            df_resumo = df_grd.groupby('NUM_GRD', as_index=False).agg({'ID': lambda x: ', '.join(sorted(set(x))), 'TOTAL_QTD':'sum', 'QTD_PALETES':'sum', 'DATA_HORA':'first', 'DATA_HORA_ATUALIZACAO':'first', 'TIPO_GRD':'first'})
-            st.dataframe(df_resumo, use_container_width=True)
+        st.dataframe(pd.DataFrame(st.session_state.grd).sort_values(by='DATA_HORA', ascending=False), use_container_width=True)
 
 with tab_graf:
     st.header("8 - GRAFICOS")
     saldos=get_saldos()
     lista=[v for v in saldos.values() if v['SALDO']>0]
-    df=pd.DataFrame(lista)
-    if not df.empty:
-        df_local=df.groupby('LOCAL', as_index=False)['SALDO'].sum()
-        fig=px.bar(df_local, x='LOCAL', y='SALDO', color='LOCAL')
+    if lista:
+        df=pd.DataFrame(lista)
+        fig=px.bar(df.groupby('LOCAL', as_index=False)['SALDO'].sum(), x='LOCAL', y='SALDO', color='LOCAL')
         st.plotly_chart(fig, use_container_width=True)
 
 with tab_hist:
-    st.header("9 - HISTORICO")
-    if st.session_state.mov:
-        df_mov=pd.DataFrame(st.session_state.mov)
-        st.dataframe(df_mov.sort_values(by='DATA_HORA', ascending=False) if 'DATA_HORA' in df_mov.columns else df_mov, use_container_width=True)
+    st.header("9 - HISTORICO COMPLETO COM FILTRO ID INDIVIDUAL OU TODOS + ENTRADA/SAIDA + DIA/SEMANA/MES/ANO")
 
-st.caption(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M:%S')} - GRD SALA ANEXA IDS INDIVIDUAIS 15/16 MESMO NUMERO + DATA/HORA ATUALIZACAO + REGRA 48H")
+    if not st.session_state.mov:
+        st.warning("Sem movimentacoes")
+    else:
+        df_mov_all = pd.DataFrame(st.session_state.mov)
+        df_mov_all['DATA_DT'] = df_mov_all['DATA'].apply(lambda x: parse_data_hora(x))
+        df_mov_all['DIA'] = df_mov_all['DATA_DT'].dt.strftime("%d/%m/%Y")
+        df_mov_all['SEMANA'] = df_mov_all['DATA_DT'].dt.strftime("%Y-W%W")
+        df_mov_all['MES'] = df_mov_all['DATA_DT'].dt.strftime("%m/%Y")
+        df_mov_all['ANO'] = df_mov_all['DATA_DT'].dt.strftime("%Y")
+        df_mov_all['QTD'] = df_mov_all['TOTAL_QTD'].apply(lambda x: safe_float(x))
+        df_mov_all['PAL'] = df_mov_all['PALETES'].apply(lambda x: safe_float(x))
+
+        # FILTROS
+        ids_raw_hist = [str(r.get('ID','')).strip().upper() for r in st.session_state.cad if str(r.get('ID','')).strip()!='']
+        ids_hist = sorted(list(set(ids_raw_hist)))
+        ids_hist_com_todos = ["TODOS"] + ids_hist
+
+        c1,c2,c3,c4 = st.columns(4)
+        with c1:
+            id_filtro = st.selectbox("FILTRAR POR ID - INDIVIDUAL OU TODOS", options=ids_hist_com_todos, key="filtro_id_hist")
+        with c2:
+            tipo_filtro_hist = st.selectbox("TIPO - ENTRADA OU SAIDA OU TODOS", options=["TODOS","ENTRADA","SAIDA"], key="filtro_tipo_hist")
+        with c3:
+            periodo_hist = st.selectbox("AGRUPAR POR PERIODO", options=["DIA","SEMANA","MES","ANO"], key="filtro_periodo_hist")
+        with c4:
+            local_filtro = st.selectbox("LOCAL - TODOS OU ESPECIFICO", options=["TODOS"]+LOCAIS, key="filtro_local_hist")
+
+        # APLICA FILTROS
+        df_filtrado = df_mov_all.copy()
+
+        if id_filtro!= "TODOS":
+            df_filtrado = df_filtrado[df_filtrado['ID'].astype(str).str.upper()==id_filtro]
+
+        if tipo_filtro_hist!= "TODOS":
+            df_filtrado = df_filtrado[df_filtrado['TIPO']==tipo_filtro_hist]
+
+        if local_filtro!= "TODOS":
+            df_filtrado = df_filtrado[df_filtrado['LOCAL_MOV']==local_filtro]
+
+        if df_filtrado.empty:
+            st.warning(f"Sem dados para ID={id_filtro} TIPO={tipo_filtro_hist} LOCAL={local_filtro}")
+        else:
+            # METRICAS
+            df_ent = df_filtrado[df_filtrado['TIPO']=="ENTRADA"]
+            df_sai = df_filtrado[df_filtrado['TIPO']=="SAIDA"]
+
+            c1,c2,c3,c4 = st.columns(4)
+            with c1: st.metric(f"ENTRADAS ({id_filtro})", f"{df_ent['QTD'].sum():,.0f} UN", f"{df_ent['PAL'].sum():.1f} PAL")
+            with c2: st.metric(f"SAIDAS ({id_filtro})", f"{df_sai['QTD'].sum():,.0f} UN", f"{df_sai['PAL'].sum():.1f} PAL")
+            with c3: st.metric(f"SALDO ({id_filtro})", f"{df_ent['QTD'].sum()-df_sai['QTD'].sum():,.0f} UN")
+            with c4: st.metric(f"QTD MOV ({id_filtro})", f"{len(df_filtrado)}")
+
+            # COLUNA AGRUPAMENTO
+            col_agrup = {'DIA':'DIA','SEMANA':'SEMANA','MES':'MES','ANO':'ANO'}[periodo_hist]
+
+            # GRAFICO GERAL AGRUPADO ENTRADA VS SAIDA
+            df_g_geral = df_filtrado.groupby([col_agrup,'TIPO'], as_index=False)['QTD'].sum()
+            df_g_geral['TEXTO']=df_g_geral['QTD'].apply(lambda x: f"{x:,.0f}")
+            if not df_g_geral.empty:
+                fig_geral = px.bar(df_g_geral, x=col_agrup, y='QTD', color='TIPO', barmode='group', text='TEXTO', title=f"HISTORICO {id_filtro} - {tipo_filtro_hist} - POR {periodo_hist} - ENTRADA VS SAIDA")
+                fig_geral.update_traces(textposition='inside', textfont=dict(size=12, color='white', family='Arial Black'))
+                fig_geral.update_layout(height=600)
+                st.plotly_chart(fig_geral, use_container_width=True)
+
+            # GRAFICOS SEPARADOS ENTRADA E SAIDA
+            col1,col2 = st.columns(2)
+            with col1:
+                st.subheader(f"🟢 ENTRADAS - ID {id_filtro} - POR {periodo_hist}")
+                df_ent_g = df_ent.groupby(col_agrup, as_index=False)['QTD'].sum().sort_values(by=col_agrup)
+                df_ent_g['TEXTO']=df_ent_g['QTD'].apply(lambda x: f"{x:,.0f}")
+                if not df_ent_g.empty:
+                    fig_ent = px.bar(df_ent_g, x=col_agrup, y='QTD', text='TEXTO', title=f"ENTRADAS {id_filtro} POR {periodo_hist}", color='QTD', color_continuous_scale='Greens')
+                    fig_ent.update_traces(textposition='inside', textfont=dict(size=14, color='white'))
+                    fig_ent.update_layout(height=400)
+                    st.plotly_chart(fig_ent, use_container_width=True)
+                st.dataframe(df_ent_g, use_container_width=True)
+                st.write(f"Detalhado ENTRADAS {id_filtro}")
+                st.dataframe(df_ent.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=250)
+
+            with col2:
+                st.subheader(f"🔴 SAIDAS - ID {id_filtro} - POR {periodo_hist}")
+                df_sai_g = df_sai.groupby(col_agrup, as_index=False)['QTD'].sum().sort_values(by=col_agrup)
+                df_sai_g['TEXTO']=df_sai_g['QTD'].apply(lambda x: f"{x:,.0f}")
+                if not df_sai_g.empty:
+                    fig_sai = px.bar(df_sai_g, x=col_agrup, y='QTD', text='TEXTO', title=f"SAIDAS {id_filtro} POR {periodo_hist}", color='QTD', color_continuous_scale='Reds')
+                    fig_sai.update_traces(textposition='inside', textfont=dict(size=14, color='white'))
+                    fig_sai.update_layout(height=400)
+                    st.plotly_chart(fig_sai, use_container_width=True)
+                st.dataframe(df_sai_g, use_container_width=True)
+                st.write(f"Detalhado SAIDAS {id_filtro}")
+                st.dataframe(df_sai.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=250)
+
+            # TABELA GERAL AGRUPADA
+            st.divider()
+            st.subheader(f"📊 TABELA AGRUPADA POR {periodo_hist} - ID {id_filtro} - TIPO {tipo_filtro_hist} - LOCAL {local_filtro}")
+            df_tabela = df_filtrado.groupby([col_agrup,'ID','TIPO','LOCAL_MOV'], as_index=False)['QTD'].sum()
+            st.dataframe(df_tabela.sort_values(by=col_agrup, ascending=False), use_container_width=True, height=300)
+
+            # HISTORICO DETALHADO COMPLETO FILTRADO
+            st.subheader(f"📜 HISTORICO DETALHADO - ID {id_filtro} - {tipo_filtro_hist} - {local_filtro}")
+            st.dataframe(df_filtrado.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=400)
+
+            # GRAFICO POR LOCAL SE TODOS
+            if local_filtro=="TODOS":
+                df_local = df_filtrado.groupby(['LOCAL_MOV','TIPO'], as_index=False)['QTD'].sum()
+                if not df_local.empty:
+                    fig_local = px.bar(df_local, x='LOCAL_MOV', y='QTD', color='TIPO', barmode='group', title=f"POR LOCAL - ID {id_filtro} - {tipo_filtro_hist}")
+                    st.plotly_chart(fig_local, use_container_width=True)
+
+            # GRAFICO POR ID SE TODOS
+            if id_filtro=="TODOS":
+                df_id_g = df_filtrado.groupby(['ID','TIPO'], as_index=False)['QTD'].sum()
+                df_top_ids = df_id_g.groupby('ID', as_index=False)['QTD'].sum().sort_values(by='QTD', ascending=False).head(10)
+                df_top_ids['TEXTO']=df_top_ids['QTD'].apply(lambda x: f"{x:,.0f}")
+                fig_ids = px.bar(df_top_ids, x='ID', y='QTD', text='TEXTO', color='ID', title=f"TOP 10 IDS - {tipo_filtro_hist} - POR {periodo_hist}")
+                fig_ids.update_traces(textposition='inside', textfont=dict(size=14, color='white'))
+                st.plotly_chart(fig_ids, use_container_width=True)
+
+st.caption(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M:%S')} - HISTORICO COM FILTRO ID INDIVIDUAL/TODOS + ENTRADA/SAIDA + DIA/SEMANA/MES/ANO")
