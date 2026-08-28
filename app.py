@@ -139,7 +139,6 @@ def excluir_estoque(idp, local, marca, lote):
 agora=datetime.now(fuso)
 st.title(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M')}")
 
-# TABS EM ORDEM CORRETA
 if is_admin:
     tab_names = ["ADMIN","DASHBOARD","CADASTRO","MOVIMENTACAO","ESTOQUE","BUSCA ID","GRD","GRAFICOS","HISTORICO"]
     tabs = st.tabs(tab_names)
@@ -165,7 +164,6 @@ else:
     tab_graf = tabs[6]
     tab_hist = tabs[7]
 
-# 1 - ADMIN
 if tab_admin is not None:
     with tab_admin:
         st.header("1 - ADMINISTRACAO")
@@ -186,7 +184,6 @@ if tab_admin is not None:
                     st.rerun()
         st.dataframe(pd.read_csv(ARQ_EMAILS), use_container_width=True)
 
-# 2 - DASHBOARD
 with tab_dash:
     st.header("2 - DASHBOARD")
     saldos=get_saldos()
@@ -212,9 +209,8 @@ with tab_dash:
         st.plotly_chart(fig, use_container_width=True)
         st.dataframe(df, use_container_width=True)
 
-# 3 - CADASTRO
 with tab_cad:
-    st.header("3 - CADASTRO DE MATERIAIS")
+    st.header("3 - CADASTRO DE MATERIAIS - SELECIONE LOCAIS")
     id_busca=st.text_input("DIGITE ID PARA RECONHECER MATERIAL", key="id_busca_cad")
     desc_d=""; marca_d=""
     for r in st.session_state.cad:
@@ -225,31 +221,33 @@ with tab_cad:
         desc_in=st.text_input("DESCRICAO DO REFRATARIO* EX: TIJOLO ISOLANTE 230x114", value=desc_d, key="desc_cad")
         marca_in=st.text_input("MARCA / FABRICANTE*", value=marca_d, key="marca_cad")
         lote_in=st.text_input("LOTE INICIAL OPCIONAL", key="lote_cad")
-        local_in=st.selectbox("LOCAL FISICO", LOCAIS, key="local_cad")
-        qtd_in=st.number_input("QTD POR PALETE", value=1250.0, key="qtd_cad")
-        ent_in=st.number_input("PALETES INICIAL 0=SO CADASTRO", value=0.0, key="ent_cad")
-        if st.form_submit_button("CADASTRAR MATERIAL", type="primary"):
+        locais_sel=st.multiselect("SELECIONE EM QUAIS LOCAIS CADASTRAR* (PODE MARCAR VARIOS LOCAIS)", LOCAIS, default=[LOCAL_GALPAO], key="locais_cad")
+        qtd_in=st.number_input("QTD UNIDADES POR PALETE", value=1250.0, key="qtd_cad")
+        ent_in=st.number_input("PALETES POR LOCAL SELECIONADO - 0=SO CADASTRO BASE SEM ESTOQUE", value=0.0, key="ent_cad")
+        if st.form_submit_button("CADASTRAR NOS LOCAIS SELECIONADOS", type="primary"):
             if not id_in or not desc_in or not marca_in:
                 st.error("Preencha ID, DESCRICAO e MARCA")
+            elif not locais_sel:
+                st.error("Selecione pelo menos 1 LOCAL para cadastrar")
             else:
-                total=qtd_in*ent_in
-                st.session_state.cad.append({"ID":id_in.upper(),"DESCRICAO":desc_in.upper(),"MARCA":marca_in.upper(),"LOTE":lote_in.upper(),"QTD_PALETE":qtd_in,"ENTRADA":ent_in,"TOTAL":total,"LOCAL":local_in,"FABRICACAO":date.today().strftime("%d/%m/%Y")})
+                for local_cad in locais_sel:
+                    total=qtd_in*ent_in
+                    st.session_state.cad.append({"ID":id_in.upper(),"DESCRICAO":desc_in.upper(),"MARCA":marca_in.upper(),"LOTE":lote_in.upper(),"QTD_PALETE":qtd_in,"ENTRADA":ent_in,"TOTAL":total,"LOCAL":local_cad,"FABRICACAO":date.today().strftime("%d/%m/%Y")})
                 pd.DataFrame(st.session_state.cad).to_csv(ARQ_CAD,index=False)
-                st.success(f"Material {id_in} cadastrado")
+                st.success(f"Material {id_in} - {desc_in} cadastrado em {len(locais_sel)} local(is): {', '.join(locais_sel)} com {ent_in} paletes em cada")
                 st.rerun()
     st.divider()
-    st.write("Materiais cadastrados:")
+    st.write("Materiais cadastrados por local:")
     for i,r in enumerate(st.session_state.cad):
         if id_busca and id_busca.upper() not in str(r.get('ID','')).upper(): continue
         c1,c2=st.columns([4,1])
-        with c1: st.write(f"{r.get('ID')} - {r.get('DESCRICAO')} - {r.get('MARCA')} - LOTE {r.get('LOTE')} - {r.get('LOCAL')}")
+        with c1: st.write(f"**LOCAL: {r.get('LOCAL')}** | ID {r.get('ID')} - {r.get('DESCRICAO')} - MARCA {r.get('MARCA')} - LOTE {r.get('LOTE')} - {r.get('QTD_PALETE')} UN/PAL - {r.get('ENTRADA')} PAL")
         with c2:
             if st.button("Excluir", key=f"del_cad_{i}"):
                 st.session_state.cad.pop(i)
                 pd.DataFrame(st.session_state.cad).to_csv(ARQ_CAD,index=False)
                 st.rerun()
 
-# 4 - MOVIMENTACAO
 with tab_mov:
     st.header("4 - MOVIMENTACAO COM FLUXO AUTOMATICO")
     st.info("FLUXO: ENTRADA GALPAO=SOMA GERAL | SAIDA GALPAO=OFICINA AUTO | ENTRADA SALA=DESCONTA GALPAO AUTO | SAIDA SALA=OFICINA AUTO | SAIDA OFICINA=CONSUMO FINAL")
@@ -305,7 +303,6 @@ with tab_mov:
         st.divider()
         st.dataframe(pd.DataFrame(st.session_state.mov).tail(20), use_container_width=True)
 
-# 5 - ESTOQUE
 with tab_est:
     st.header("5 - ESTOQUE COM BOTAO EXCLUIR")
     saldos=get_saldos()
@@ -335,7 +332,6 @@ with tab_est:
                     st.rerun()
         st.dataframe(pd.DataFrame(lista), use_container_width=True)
 
-# 6 - BUSCA ID
 with tab_busca:
     st.header("6 - BUSCA POR ID")
     id_b=st.text_input("DIGITE ID PARA BUSCAR", key="id_busca")
@@ -352,7 +348,6 @@ with tab_busca:
         else:
             st.warning(f"ID {id_b} sem saldo")
 
-# 7 - GRD
 with tab_grd:
     st.header("7 - GRD GUIA REMESSA")
     ids=list(set([r.get('ID','') for r in st.session_state.cad if r.get('ID')]))
@@ -385,7 +380,6 @@ with tab_grd:
     if st.session_state.grd:
         st.dataframe(pd.DataFrame(st.session_state.grd), use_container_width=True)
 
-# 8 - GRAFICOS
 with tab_graf:
     st.header("8 - GRAFICOS DETALHADOS - NUMEROS GRANDES DENTRO")
     saldos=get_saldos()
@@ -422,7 +416,6 @@ with tab_graf:
         fig_tree=px.treemap(df, path=['LOCAL','ID','LOTE'], values='SALDO', title="TREEMAP LOCAL > ID > LOTE - TAMANHO = QTD")
         st.plotly_chart(fig_tree, use_container_width=True)
 
-# 9 - HISTORICO
 with tab_hist:
     st.header("9 - HISTORICO DIA / SEMANA / MES / ANO")
     if not st.session_state.mov:
