@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 import plotly.express as px
 from datetime import datetime as dt
 
-st.set_page_config(page_title="REFORMA DE FORNOS", layout="wide")
+st.set_page_config(page_title="REFORMA DE FORNOS - ENTRADA/SAIDA + APAGAR + GUARDA 100%", layout="wide")
 fuso = timezone(timedelta(hours=-3))
 ARQ_CAD = "cadastro_refratario.csv"
 ARQ_MOV = "movimentacao.csv"
@@ -17,19 +17,14 @@ LOCAL_SALA = "SALA ANEXA"
 LOCAL_OFICINA = "OFICINA DE REVESTIMENTO REFORMA DE FORNOS"
 LOCAIS = [LOCAL_GALPAO, LOCAL_SALA, LOCAL_OFICINA]
 LOCAIS_ACESSO = ["AMBOS", LOCAL_GALPAO, LOCAL_SALA, LOCAL_OFICINA]
-
 TIPOS_EMBALAGEM = ["PALETE", "CAIXA", "SACO", "FARDO", "BAG", "TAMBOR", "UNIDADE"]
 
 def safe_float(v, d=0.0):
-    try:
-        if v is None or str(v).strip() == "": return float(d)
-        return float(str(v).replace(",", "."))
+    try: return float(str(v).replace(",", "."))
     except: return float(d)
-
 def parse_data_hora(valor):
     try:
-        if valor is None or str(valor).strip() == "": return dt.now(fuso).replace(tzinfo=None)
-        s = str(valor).strip()
+        s=str(valor).strip()
         if " " in s and ":" in s:
             try: return dt.strptime(s, "%d/%m/%Y %H:%M:%S")
             except: return dt.strptime(s, "%d/%m/%Y %H:%M")
@@ -39,64 +34,34 @@ def parse_data_hora(valor):
 
 def carregar(caminho):
     if not os.path.exists(caminho): return []
-    try: df = pd.read_csv(caminho, dtype=str, encoding='utf-8').fillna("")
+    try: df=pd.read_csv(caminho, dtype=str, encoding='utf-8').fillna("")
     except:
-        try: df = pd.read_csv(caminho, dtype=str, encoding='latin-1').fillna("")
+        try: df=pd.read_csv(caminho, dtype=str, encoding='latin-1').fillna("")
         except: return []
-    df.columns = [str(c).upper().strip() for c in df.columns]
-    if "MOV" in caminho.upper():
-        if "DATA_HORA" not in df.columns: df["DATA_HORA"] = datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
-        if "DATA" not in df.columns: df["DATA"] = df["DATA_HORA"].astype(str).str.split(" ").str[0]
+    df.columns=[str(c).upper().strip() for c in df.columns]
     return df.to_dict('records')
 
 def salvar_tudo():
     try:
-        if st.session_state.cad: pd.DataFrame(st.session_state.cad).to_csv(ARQ_CAD, index=False, encoding='utf-8')
-        if st.session_state.mov: pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV, index=False, encoding='utf-8')
-        if st.session_state.grd: pd.DataFrame(st.session_state.grd).to_csv(ARQ_GRD, index=False, encoding='utf-8')
+        pd.DataFrame(st.session_state.cad).to_csv(ARQ_CAD, index=False, encoding='utf-8') if st.session_state.cad else pd.DataFrame([]).to_csv(ARQ_CAD, index=False)
+        pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV, index=False, encoding='utf-8') if st.session_state.mov else pd.DataFrame([]).to_csv(ARQ_MOV, index=False)
+        pd.DataFrame(st.session_state.grd).to_csv(ARQ_GRD, index=False, encoding='utf-8') if st.session_state.grd else pd.DataFrame([]).to_csv(ARQ_GRD, index=False)
         return True
-    except: return False
+    except Exception as e:
+        st.error(f"Erro salvar: {e}")
+        return False
 
 def df_safe_sort(df, asc=False):
-    try:
-        if df is None or df.empty: return df
-        if "DATA_HORA" in df.columns: return df.sort_values(by="DATA_HORA", ascending=asc)
-        return df
+    try: return df.sort_values(by="DATA_HORA", ascending=asc) if "DATA_HORA" in df.columns else df
     except: return df
 
 def get_saldos():
-    saldos = {}
-    # Mapa de caracteristicas por ID
-    carac_por_id = {}
+    saldos={}; carac={}
     for r in st.session_state.cad:
-        idp = str(r.get('ID','')).upper().strip()
-        if idp and idp not in carac_por_id:
-            carac_por_id[idp] = {
-                'DESCRICAO': str(r.get('DESCRICAO','')).upper(),
-                'TIPO_EMBALAGEM': str(r.get('TIPO_EMBALAGEM','PALETE')).upper(),
-                'QTD_POR_EMBALAGEM': safe_float(r.get('QTD_POR_EMBALAGEM',1250),1250),
-                'MARCA': str(r.get('MARCA','SEM MARCA')).upper()
-            }
-
-    for r in st.session_state.cad:
-        try:
-            idp = str(r.get('ID','')).upper().strip(); lote = str(r.get('LOTE','')).upper().strip()
-            if not idp: continue
-            local = str(r.get('LOCAL',LOCAL_GALPAO)).upper()
-            if "SALA" in local: local=LOCAL_SALA
-            elif "OFIC" in local: local=LOCAL_OFICINA
-            else: local=LOCAL_GALPAO
-            if not lote: continue
-            marca = str(r.get('MARCA','SEM MARCA')).upper()
-            carac = carac_por_id.get(idp, {})
-            chave=f"{idp}__{local}__{marca}__{lote}"
-            q=safe_float(r.get('TOTAL',0))
-            if q==0: q=safe_float(r.get('QTD_POR_EMBALAGEM',0))*safe_float(r.get('ENTRADA',0))
-            if chave not in saldos:
-                saldos[chave]={'ID':idp,'DESCRICAO':carac.get('DESCRICAO',''), 'TIPO_EMBALAGEM':carac.get('TIPO_EMBALAGEM','PALETE'), 'QTD_POR_EMBALAGEM':carac.get('QTD_POR_EMBALAGEM',1250), 'LOCAL':local,'MARCA':marca,'LOTE':lote,'SALDO':q,'EMBALAGENS':safe_float(r.get('ENTRADA',0)),'ULT_ATUAL':str(r.get('FABRICACAO','')), 'CALCULO': f"{safe_float(r.get('ENTRADA',0))} x {carac.get('QTD_POR_EMBALAGEM',1250)} = {q}"}
-            else: saldos[chave]['SALDO']+=q; saldos[chave]['EMBALAGENS']+=safe_float(r.get('ENTRADA',0))
-        except: continue
-
+        idp=str(r.get('ID','')).upper().strip(); desc=str(r.get('DESCRICAO','')).upper().strip()
+        if not idp or not desc: continue
+        chave=f"{idp}__{desc}__{str(r.get('MARCA','')).upper()}"
+        if chave not in carac: carac[chave]={'ID':idp,'DESCRICAO':desc,'TIPO_EMBALAGEM':str(r.get('TIPO_EMBALAGEM','PALETE')).upper(),'QTD_POR_EMBALAGEM':safe_float(r.get('QTD_POR_EMBALAGEM',1250),1250),'MARCA':str(r.get('MARCA','')).upper()}
     for m in st.session_state.mov:
         try:
             idp=str(m.get('ID','')).upper().strip(); lote=str(m.get('LOTE','')).upper().strip()
@@ -105,41 +70,41 @@ def get_saldos():
             if "SALA" in local: local=LOCAL_SALA
             elif "OFIC" in local: local=LOCAL_OFICINA
             else: local=LOCAL_GALPAO
-            marca=str(m.get('MARCA','SEM MARCA')).upper()
-            carac = carac_por_id.get(idp, {})
-            chave=f"{idp}__{local}__{marca}__{lote}"
+            desc=str(m.get('DESCRICAO','')).upper()
+            c=None
+            for k,v in carac.items():
+                if v['ID']==idp and v['DESCRICAO']==desc: c=v; break
+            if not c:
+                for k,v in carac.items():
+                    if v['ID']==idp: c=v; break
+            if not c: continue
+            chave=f"{idp}__{desc}__{local}__{str(m.get('MARCA','')).upper()}__{lote}"
             if chave not in saldos and m.get('TIPO')=="ENTRADA":
-                saldos[chave]={'ID':idp,'DESCRICAO':carac.get('DESCRICAO',''),'TIPO_EMBALAGEM':carac.get('TIPO_EMBALAGEM','PALETE'),'QTD_POR_EMBALAGEM':carac.get('QTD_POR_EMBALAGEM',1250),'LOCAL':local,'MARCA':marca,'LOTE':lote,'SALDO':0,'EMBALAGENS':0,'ULT_ATUAL':str(m.get('DATA_HORA','')), 'CALCULO':''}
+                saldos[chave]={'ID':idp,'DESCRICAO':desc,'TIPO_EMBALAGEM':c['TIPO_EMBALAGEM'],'QTD_POR_EMBALAGEM':c['QTD_POR_EMBALAGEM'],'LOCAL':local,'MARCA':c['MARCA'],'LOTE':lote,'SALDO':0,'EMBALAGENS':0,'ULT_ATUAL':'','CALCULO':''}
             if chave not in saldos: continue
-            if m.get('TIPO')=="ENTRADA":
-                saldos[chave]['SALDO']+=safe_float(m.get('TOTAL_QTD',0)); saldos[chave]['EMBALAGENS']+=safe_float(m.get('PALETES',0)); saldos[chave]['ULT_ATUAL']=str(m.get('DATA_HORA',''))
-                saldos[chave]['CALCULO']=f"{safe_float(m.get('PALETES',0))} {carac.get('TIPO_EMBALAGEM','')} x {carac.get('QTD_POR_EMBALAGEM',0)} = {safe_float(m.get('TOTAL_QTD',0))}"
-            else:
-                saldos[chave]['SALDO']-=safe_float(m.get('TOTAL_QTD',0)); saldos[chave]['EMBALAGENS']-=safe_float(m.get('PALETES',0)); saldos[chave]['ULT_ATUAL']=str(m.get('DATA_HORA',''))
+            if m.get('TIPO')=="ENTRADA": saldos[chave]['SALDO']+=safe_float(m.get('TOTAL_QTD',0)); saldos[chave]['EMBALAGENS']+=safe_float(m.get('PALETES',0)); saldos[chave]['ULT_ATUAL']=str(m.get('DATA_HORA',''))
+            else: saldos[chave]['SALDO']-=safe_float(m.get('TOTAL_QTD',0)); saldos[chave]['EMBALAGENS']-=safe_float(m.get('PALETES',0)); saldos[chave]['ULT_ATUAL']=str(m.get('DATA_HORA',''))
         except: continue
-    return saldos, carac_por_id
+    return saldos, carac
 
 def get_saldo_sala_com_quarentena(tempo_horas=None):
-    if tempo_horas is None: tempo_horas = st.session_state.get('tempo_quarentena',48)
-    agora_dt = datetime.now(fuso).replace(tzinfo=None)
-    saldos,_ = get_saldos()
-    total={}; pend={}; disp={}
+    if tempo_horas is None: tempo_horas=st.session_state.get('tempo_quarentena',48)
+    agora_dt=datetime.now(fuso).replace(tzinfo=None)
+    saldos,_=get_saldos(); total={}; pend={}; disp={}
     for k,v in saldos.items():
-        if v['LOCAL']==LOCAL_SALA and v['SALDO']>0:
-            total[k]=v.copy(); disp[k]=v.copy()
+        if v['LOCAL']==LOCAL_SALA and v['SALDO']>0: total[k]=v.copy(); disp[k]=v.copy()
     for m in st.session_state.mov:
         try:
             if str(m.get('LOCAL_MOV','')).upper()!=LOCAL_SALA.upper(): continue
             if m.get('TIPO')!="ENTRADA": continue
-            idp=str(m.get('ID','')).upper().strip(); lote=str(m.get('LOTE','')).upper().strip()
-            marca=str(m.get('MARCA','SEM MARCA')).upper()
-            chave=f"{idp}__{LOCAL_SALA}__{marca}__{lote}"
+            idp=str(m.get('ID','')).upper(); lote=str(m.get('LOTE','')).upper()
+            desc=str(m.get('DESCRICAO','')).upper()
+            chave=f"{idp}__{desc}__{LOCAL_SALA}__{str(m.get('MARCA','')).upper()}__{lote}"
             data_mov=parse_data_hora(m.get('DATA_HORA',''))
             diff=(agora_dt-data_mov).total_seconds()/3600
             if diff < tempo_horas:
                 q=safe_float(m.get('TOTAL_QTD',0))
-                if chave not in pend:
-                    pend[chave]={'ID':idp,'LOTE':lote,'QTD_PENDENTE':q,'DATA_ENTRADA':str(m.get('DATA_HORA','')),'HORAS_RESTANTES':tempo_horas-diff,'DATA_LIBERACAO':data_mov+timedelta(hours=tempo_horas)}
+                if chave not in pend: pend[chave]={'ID':idp,'LOTE':lote,'QTD_PENDENTE':q,'DATA_ENTRADA':str(m.get('DATA_HORA','')),'HORAS_RESTANTES':tempo_horas-diff}
                 else: pend[chave]['QTD_PENDENTE']+=q
                 if chave in disp:
                     disp[chave]['SALDO']-=q
@@ -148,16 +113,19 @@ def get_saldo_sala_com_quarentena(tempo_horas=None):
     disp={k:v for k,v in disp.items() if v['SALDO']>0}
     return total,pend,disp
 
-# SESSION
+# ========== PERSISTENCIA 100% - GUARDA MESMO SE DESLIGAR ==========
 if 'inicializado' not in st.session_state:
-    st.session_state.cad=carregar(ARQ_CAD); st.session_state.mov=carregar(ARQ_MOV); st.session_state.grd=carregar(ARQ_GRD); st.session_state.inicializado=True
+    st.session_state.cad=carregar(ARQ_CAD)
+    st.session_state.mov=carregar(ARQ_MOV)
+    st.session_state.grd=carregar(ARQ_GRD)
+    st.session_state.inicializado=True
 if 'tempo_quarentena' not in st.session_state: st.session_state.tempo_quarentena=48
-if not os.path.exists(ARQ_EMAILS):
-    pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin","LOCAL":"AMBOS","STATUS":"LIBERADO","NOME":"ADMIN"}]).to_csv(ARQ_EMAILS,index=False)
+if not os.path.exists(ARQ_EMAILS): pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin","LOCAL":"AMBOS","STATUS":"LIBERADO","NOME":"ADMIN"}]).to_csv(ARQ_EMAILS,index=False)
 if 'logado' not in st.session_state: st.session_state.logado=False
 if 'usuario' not in st.session_state: st.session_state.usuario=None
+
 if not st.session_state.logado:
-    st.markdown("<h1 style='text-align:center; background:black; color:#00ff66; padding:20px; border-radius:12px;'>REFORMA DE FORNOS</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center; background:black; color:#00ff66; padding:20px; border-radius:12px;'>REFORMA DE FORNOS - ENTRADA/SAIDA + APAGAR + GUARDA 100%</h1>", unsafe_allow_html=True)
     e=st.text_input("Email"); s=st.text_input("Senha",type="password")
     if st.button("Entrar",type="primary"):
         df_e=pd.read_csv(ARQ_EMAILS,dtype=str).fillna(""); df_e['EMAIL']=df_e['EMAIL'].astype(str).str.lower()
@@ -169,17 +137,30 @@ if not st.session_state.logado:
 user=st.session_state.usuario
 is_admin=str(user.get('EMAIL','')).lower()=="admin@admin.com"
 import streamlit.components.v1 as components
-components.html("<script>let w=null;async function k(){try{if('wakeLock' in navigator){w=await navigator.wakeLock.request('screen');}}catch(e){}}k();</script><p style='color:green;font-size:12px;'>✅ TELA LIGADA - CALCULO AUTOMATICO</p>",height=30)
+components.html("<p style='color:green;'>✅ ENTRADA/SAIDA AUTO ESTOQUE/GRAFICO + APAGAR + GUARDA 100% MESMO SE DESLIGAR</p>",height=30)
 st.sidebar.write(f"Logado: {user.get('NOME')}")
-st.sidebar.metric("⏰ QUARENTENA", f"{st.session_state.tempo_quarentena}H")
-st.sidebar.write(f"📦 CAD:{len(st.session_state.cad)} MOV:{len(st.session_state.mov)}")
-if st.session_state.cad: st.sidebar.download_button("BAIXAR CAD",pd.DataFrame(st.session_state.cad).to_csv(index=False),"cad.csv")
-if st.session_state.mov: st.sidebar.download_button("BAIXAR MOV",pd.DataFrame(st.session_state.mov).to_csv(index=False),"mov.csv")
-if st.sidebar.button("Sair"): salvar_tudo(); st.session_state.logado=False; st.session_state.usuario=None; st.rerun()
+st.sidebar.metric("⏰ VOCE DECIDE", f"{st.session_state.tempo_quarentena}H")
+st.sidebar.write(f"📦 CAD:{len(st.session_state.cad)} MOV:{len(st.session_state.mov)} GRD:{len(st.session_state.grd)}")
+st.sidebar.divider()
+st.sidebar.write("💾 BACKUP - GUARDA 100% MESMO SE DESLIGAR")
+if st.session_state.cad: st.sidebar.download_button("BAIXAR CAD - BACKUP", pd.DataFrame(st.session_state.cad).to_csv(index=False), "cadastro_backup.csv")
+if st.session_state.mov: st.sidebar.download_button("BAIXAR MOV - BACKUP", pd.DataFrame(st.session_state.mov).to_csv(index=False), "movimentacao_backup.csv")
+if st.session_state.grd: st.sidebar.download_button("BAIXAR GRD - BACKUP", pd.DataFrame(st.session_state.grd).to_csv(index=False), "grd_backup.csv")
+st.sidebar.divider()
+st.sidebar.write("📤 RESTAURAR SE DESLIGAR")
+up_cad=st.sidebar.file_uploader("Restaurar CAD", type="csv", key="up_cad")
+if up_cad:
+    try: df=pd.read_csv(up_cad,dtype=str).fillna(""); st.session_state.cad=df.to_dict('records'); salvar_tudo(); st.sidebar.success(f"CAD restaurado {len(st.session_state.cad)}"); st.rerun()
+    except: pass
+up_mov=st.sidebar.file_uploader("Restaurar MOV", type="csv", key="up_mov")
+if up_mov:
+    try: df=pd.read_csv(up_mov,dtype=str).fillna(""); st.session_state.mov=df.to_dict('records'); salvar_tudo(); st.sidebar.success(f"MOV restaurado {len(st.session_state.mov)}"); st.rerun()
+    except: pass
+if st.sidebar.button("Sair"): salvar_tudo(); st.session_state.logado=False; st.rerun()
 
 agora=datetime.now(fuso)
-st.title(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M:%S')}")
-tabs=st.tabs(["ADMIN","DASHBOARD","CADASTRO CARACTERISTICAS","MOV - LOTE+LOCAL","ESTOQUE CALCULADO","BUSCA ID","GRD VOCE DECIDE HORAS","GRAFICO EMPILHADO POR ID","HISTORICO"])
+st.title(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M:%S')} BRASÍLIA")
+tabs=st.tabs(["ADMIN","DASHBOARD","3 - CADASTRO - CARACTERISTICAS","4 - ENTRADA/SAIDA - ATUALIZA ESTOQUE/GRAFICOS AUTO + APAGAR","ESTOQUE AUTO","BUSCA ID","GRD HORAS EDITAVEIS","GRAFICO AUTO + DATA/HORA BRASILIA","HISTORICO + APAGAR"])
 tab_admin, tab_dash, tab_cad, tab_mov, tab_est, tab_busca, tab_grd, tab_graf, tab_hist = tabs
 
 with tab_admin:
@@ -189,299 +170,309 @@ with tab_admin:
             email_new=st.text_input("Email"); nome_new=st.text_input("Nome"); senha_new=st.text_input("Senha")
             local_new=st.selectbox("Local",LOCAIS_ACESSO); status_new=st.selectbox("Status",["LIBERADO","BLOQUEADO"])
             if st.form_submit_button("SALVAR"):
-                if email_new and senha_new:
-                    df=pd.read_csv(ARQ_EMAILS); df=df[df['EMAIL'].astype(str).str.lower()!=email_new.lower()]
-                    novo=pd.DataFrame([{"EMAIL":email_new.lower(),"SENHA":senha_new,"LOCAL":local_new,"STATUS":status_new,"NOME":nome_new.upper()}])
-                    pd.concat([df,novo],ignore_index=True).to_csv(ARQ_EMAILS,index=False); st.rerun()
-        st.dataframe(pd.read_csv(ARQ_EMAILS),use_container_width=True)
+                df=pd.read_csv(ARQ_EMAILS); df=df[df['EMAIL'].astype(str).str.lower()!=email_new.lower()]
+                novo=pd.DataFrame([{"EMAIL":email_new.lower(),"SENHA":senha_new,"LOCAL":local_new,"STATUS":status_new,"NOME":nome_new.upper()}])
+                pd.concat([df,novo],ignore_index=True).to_csv(ARQ_EMAILS,index=False); st.rerun()
+        st.dataframe(pd.read_csv(ARQ_EMAILS), use_container_width=True)
 
 with tab_dash:
-    st.header(f"2 - DASHBOARD - {st.session_state.tempo_quarentena}H")
-    total_sala,pend,disp = get_saldo_sala_com_quarentena(st.session_state.tempo_quarentena)
+    st.header("2 - DASHBOARD - ATUALIZA AUTO")
+    total_sala,pend,disp=get_saldo_sala_com_quarentena(st.session_state.tempo_quarentena)
     saldos,_=get_saldos()
-    if not total_sala: total_sala={k:v for k,v in saldos.items() if v['LOCAL']==LOCAL_SALA and v['SALDO']>0}; disp=total_sala.copy()
+    if not total_sala: total_sala={k:v for k,v in saldos.items() if v['LOCAL']==LOCAL_SALA and v['SALDO']>0}
     df_total=pd.DataFrame(list(total_sala.values())) if total_sala else pd.DataFrame()
-    if df_total.empty: st.error(f"SEM ESTOQUE {LOCAL_SALA}");
-    else:
-        c1,c2,c3,c4=st.columns(4)
-        with c1: st.metric("SALA TOTAL",f"{df_total['SALDO'].sum():,.0f}")
-        with c2: st.metric(f"BLOQ <{st.session_state.tempo_quarentena}H",f"{sum([v['QTD_PENDENTE'] for v in pend.values()]) if pend else 0:,.0f}")
-        with c3: st.metric(f"DISP >{st.session_state.tempo_quarentena}H",f"{pd.DataFrame(list(disp.values()))['SALDO'].sum() if disp else df_total['SALDO'].sum():,.0f}")
-        with c4: st.metric("IDS",f"{df_total['ID'].nunique()}")
-        st.dataframe(df_total[['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','LOTE','SALDO','EMBALAGENS','ULT_ATUAL','CALCULO','LOCAL']],use_container_width=True)
+    if df_total.empty: st.warning("SEM ESTOQUE SALA - Faça ENTRADA/SAIDA na aba 4")
+    else: st.dataframe(df_total[['ID','DESCRICAO','LOTE','SALDO','ULT_ATUAL']], use_container_width=True)
 
-# ========== 3 CADASTRO CARACTERISTICAS - VOCE PREENCHE ID DESCRICAO TIPO EMBALAGEM QTD POR EMBALAGEM ==========
+# ========== 3 ABA CADASTRO - TEM QUE TER - CARACTERISTICAS - GUARDA 100% ==========
 with tab_cad:
-    st.header("3 - CADASTRO - CARACTERISTICAS DO PRODUTO - SISTEMA CALCULA")
-    st.info("ℹ️ Preencha: ID + Descrição + Tipo Embalagem + Qtd por Embalagem. Sistema calcula total na movimentação e mostra no estoque e gráfico")
-
-    id_in = st.text_input("ID* - Ex: 15", key="cad_id")
-
-    existe=False
+    st.header("3 - ABA CADASTRO - TEM QUE TER - CARACTERISTICAS DO PRODUTO - GUARDA 100% MESMO SE DESLIGAR")
+    st.success("✅ ABA CADASTRO - AQUI VOCE PREENCHE: ID + DESCRICAO + TIPO EMBALAGEM + QTD POR EMBALAGEM + MARCA - DEPOIS AUTO PELA ID NAS OUTRAS ABAS")
+    id_in = st.text_input("JANELA 1 - ID* - DIGITE ID E ENTER - ABA CADASTRO - TEM QUE TER", placeholder="Ex: 15 + ENTER", key="cad_id_digital_final")
     if id_in:
-        for r in st.session_state.cad:
-            if str(r.get('ID','')).upper().strip()==id_in.upper().strip():
-                existe=True; break
+        mats=[r for r in st.session_state.cad if str(r.get('ID','')).upper()==id_in.upper()]
+        if mats:
+            st.warning(f"ID {id_in.upper()} JA TEM {len(mats)} MATERIAIS - MESMA ID VARIOS - PODE CADASTRAR MAIS")
+            st.dataframe(pd.DataFrame(mats)[['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','MARCA']].drop_duplicates(), use_container_width=True)
 
-    if existe:
-        st.warning(f"ID {id_in.upper()} JA CADASTRADO")
-        st.dataframe(pd.DataFrame([r for r in st.session_state.cad if str(r.get('ID','')).upper()==id_in.upper()])[['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','MARCA']],use_container_width=True)
-    else:
-        with st.form("form_cad_carac"):
-            st.text_input("ID*", value=id_in.upper() if id_in else "", disabled=True, key="id_form_carac")
-            c1,c2=st.columns(2)
-            with c1:
-                desc = st.text_input("DESCRIÇÃO* - Ex: TIJOLO REFRATARIO 65% ALUMINA", key="desc_carac")
-                tipo_emb = st.selectbox("TIPO DE EMBALAGEM* - Ex: PALETE, CAIXA, SACO", TIPOS_EMBALAGEM, key="tipo_emb_carac")
-            with c2:
-                qtd_emb = st.number_input("QTD POR EMBALAGEM* - Ex: 1250 unidades por palete", min_value=0.1, value=1250.0, step=10.0, key="qtd_emb_carac")
-                marca = st.text_input("MARCA (opcional)", key="marca_carac")
+    with st.form("form_cad_final"):
+        st.markdown("### 🖥️ FORMATO DIGITAL - ABA CADASTRO - JANELAS - TEM QUE TER")
+        c1,c2=st.columns([1,2])
+        with c1:
+            st.markdown("**JANELA 1 - ID* - RASTREIO**")
+            id_form=st.text_input("ID*", value=id_in.upper() if id_in else "", key="id_form_cad_final", label_visibility="collapsed")
+        with c2:
+            st.markdown("**JANELA 2 - DESCRIÇÃO* - CARACTERISTICA**")
+            desc=st.text_input("DESCRIÇÃO*", placeholder="Ex: TIJOLO 65% ALUMINA", key="desc_cad_final", label_visibility="collapsed")
+        c3,c4,c5=st.columns(3)
+        with c3:
+            st.markdown("**JANELA 3 - TIPO EMBALAGEM***")
+            tipo_emb=st.selectbox("TIPO*", TIPOS_EMBALAGEM, key="tipo_cad_final", label_visibility="collapsed")
+        with c4:
+            st.markdown("**JANELA 4 - QTD POR EMBALAGEM***")
+            qtd_emb=st.number_input("QTD POR EMB*", min_value=0.1, value=1250.0, key="qtd_cad_final", label_visibility="collapsed")
+        with c5:
+            st.markdown("**JANELA 5 - MARCA**")
+            marca=st.text_input("MARCA", placeholder="Ex: IBAR", key="marca_cad_final", label_visibility="collapsed")
 
-            st.write(f"### SISTEMA VAI CALCULAR: X {tipo_emb} x {qtd_emb} = TOTAL")
-            st.caption(f"Ex: 2 {tipo_emb} x {qtd_emb} = {2*qtd_emb:,.0f} unidades")
+        st.markdown(f"**JANELA 6 - CALCULO AUTO: {tipo_emb} x {qtd_emb:,.0f} - VAI ATUALIZAR ESTOQUE E GRAFICOS AUTO**")
+        st.markdown(f"**JANELA 7 - DATA/HORA BRASÍLIA AUTO: {agora.strftime('%d/%m/%Y %H:%M:%S')} BRASÍLIA**")
 
-            if st.form_submit_button("✅ CADASTRAR CARACTERISTICAS - GUARDA", type="primary", use_container_width=True):
-                if not id_in or not desc:
-                    st.error("ID e DESCRIÇÃO são obrigatórios")
-                else:
-                    st.session_state.cad.append({
-                        "ID": id_in.upper().strip(),
-                        "DESCRICAO": desc.upper(),
-                        "TIPO_EMBALAGEM": tipo_emb.upper(),
-                        "QTD_POR_EMBALAGEM": qtd_emb,
-                        "QTD_PALETE": qtd_emb,
-                        "MARCA": marca.upper() if marca else "SEM MARCA",
-                        "LOTE": "",
-                        "ENTRADA": 0,
-                        "TOTAL": 0,
-                        "LOCAL": "",
-                        "FABRICACAO": agora.strftime("%d/%m/%Y %H:%M:%S")
-                    })
-                    salvar_tudo()
-                    st.success(f"✅ CARACTERISTICAS ID {id_in.upper()} GUARDADAS - {desc} - {tipo_emb} {qtd_emb}/emb - AGORA VA EM MOV PREENCHER LOTE")
-                    st.rerun()
+        if st.form_submit_button(f"✅ CADASTRAR - ABA CADASTRO - GUARDA 100% MESMO SE DESLIGAR", type="primary", use_container_width=True):
+            if not id_form or not desc: st.error("ID e DESCRIÇÃO obrigatórios")
+            else:
+                st.session_state.cad.append({"ID":id_form.upper().strip(),"DESCRICAO":desc.upper(),"TIPO_EMBALAGEM":tipo_emb.upper(),"QTD_POR_EMBALAGEM":qtd_emb,"QTD_PALETE":qtd_emb,"MARCA":marca.upper() if marca else "SEM MARCA","LOTE":"","ENTRADA":0,"TOTAL":0,"LOCAL":"","FABRICACAO":agora.strftime("%d/%m/%Y %H:%M:%S")})
+                salvar_tudo(); st.success(f"✅ CADASTRADO ID {id_form.upper()} - {desc.upper()} - GUARDADO 100% - NAO PERDE SE DESLIGAR - CAD:{len(st.session_state.cad)}"); st.balloons(); st.rerun()
 
     st.divider()
-    st.subheader("CARACTERISTICAS CADASTRADAS - SISTEMA CALCULA A PARTIR DISSO")
+    st.subheader("📋 CADASTRADOS - ABA CADASTRO - COM OPÇÃO APAGAR - GUARDA 100%")
     if st.session_state.cad:
-        # IDs unicos com caracteristicas
-        uniq={}
-        for r in st.session_state.cad:
-            idp=str(r.get('ID','')).upper()
-            if idp and idp not in uniq and str(r.get('TIPO_EMBALAGEM',''))!="":
-                uniq[idp]=r
-            elif idp and idp not in uniq:
-                # tenta achar com tipo
-                for rr in st.session_state.cad:
-                    if str(rr.get('ID','')).upper()==idp and str(rr.get('TIPO_EMBALAGEM',''))!="":
-                        uniq[idp]=rr; break
-                if idp not in uniq: uniq[idp]=r
-        df_uniq=pd.DataFrame(list(uniq.values()))
-        cols=[c for c in ['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','MARCA'] if c in df_uniq.columns]
-        st.dataframe(df_uniq[cols].sort_values(by='ID'),use_container_width=True)
+        df_all=pd.DataFrame(st.session_state.cad)
+        df_all=df_all[df_all['DESCRICAO'].astype(str).str.strip()!=""]
+        if not df_all.empty:
+            df_show=df_all[['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','MARCA']].sort_values(by=['ID','DESCRICAO']).drop_duplicates()
+            st.dataframe(df_show, use_container_width=True, height=300)
+            st.markdown("### 🗑️ APAGAR REGISTRO - ABA CADASTRO")
+            opcoes_cad=[f"{row['ID']} - {row['DESCRICAO']} - {row['MARCA']}" for _,row in df_show.iterrows()]
+            sel_apagar_cad=st.selectbox("SELECIONE MATERIAL PARA APAGAR - CADASTRO", [""]+opcoes_cad, key="apagar_cad")
+            if sel_apagar_cad:
+                if st.button(f"🗑️ APAGAR {sel_apagar_cad} - CADASTRO - CONFIRMAR", type="primary", key="btn_apagar_cad"):
+                    idx=opcoes_cad.index(sel_apagar_cad)
+                    row=df_show.iloc[idx]
+                    # Remove do cad
+                    st.session_state.cad=[r for r in st.session_state.cad if not (str(r.get('ID','')).upper()==row['ID'] and str(r.get('DESCRICAO','')).upper()==row['DESCRICAO'])]
+                    salvar_tudo(); st.success(f"🗑️ APAGADO {sel_apagar_cad} - GUARDADO 100% - NAO PERDE"); st.rerun()
 
-# ========== 4 MOV - LOTE + LOCAL - SISTEMA CALCULA ==========
+# ========== 4 ABA ENTRADA/SAIDA - ATUALIZA ESTOQUE E GRAFICOS AUTO + APAGAR + GUARDA 100% ==========
 with tab_mov:
-    st.header("4 - MOVIMENTAÇÃO - LOTE + ENTRADA/SAIDA + LOCAL - SISTEMA CALCULA AUTOMATICO")
-    id_mov=st.text_input("ID* - TEM QUE ESTAR CADASTRADO EM CARACTERISTICAS",key="mov_id")
-    desc_m=""; tipo_emb_m="PALETE"; qtd_emb_m=1250.0; marca_m=""; enc_m=False; lotes=[]
+    st.header("4 - ABA ENTRADA/SAIDA - REALIZAR ENTRADAS E SAIDAS - ATUALIZA ESTOQUE E GRAFICOS AUTOMATICO - COM APAGAR - GUARDA 100% MESMO SE DESLIGAR")
+
+    st.markdown("### 🖥️ JANELA 1 - DIGITE ID E ENTER - FORMATO DIGITAL - AUTO PREENCHE OUTRAS JANELAS")
+    id_mov = st.text_input("**JANELA 1 - ID* - DIGITE ID CADASTRADO NA ABA CADASTRO E DE ENTER - AUTO PREENCHE**", placeholder="Ex: 15 + ENTER", key="mov_id_final_apagar")
+
+    materiais_da_id=[]
     if id_mov:
         up=id_mov.upper().strip()
         for r in st.session_state.cad:
-            if str(r.get('ID','')).upper().strip()==up and str(r.get('TIPO_EMBALAGEM',''))!="":
-                desc_m=r.get('DESCRICAO',''); tipo_emb_m=r.get('TIPO_EMBALAGEM','PALETE'); qtd_emb_m=safe_float(r.get('QTD_POR_EMBALAGEM',r.get('QTD_PALETE',1250)),1250); marca_m=r.get('MARCA',''); enc_m=True; break
-        if not enc_m:
-            for r in st.session_state.cad:
-                if str(r.get('ID','')).upper().strip()==up:
-                    desc_m=r.get('DESCRICAO',''); marca_m=r.get('MARCA',''); enc_m=True; break
-        saldos,_=get_saldos()
-        for v in saldos.values():
-            if v['ID']==up and v['SALDO']>0 and v['LOTE'] not in lotes and v['LOTE']!="": lotes.append(v['LOTE'])
+            if str(r.get('ID','')).upper().strip()==up and str(r.get('DESCRICAO','')).strip()!="":
+                chave_mat=f"{str(r.get('DESCRICAO','')).upper()}__{str(r.get('MARCA','SEM MARCA')).upper()}"
+                if chave_mat not in [f"{m['DESCRICAO']}__{m['MARCA']}" for m in materiais_da_id]:
+                    materiais_da_id.append({'DESCRICAO':str(r.get('DESCRICAO','')).upper(),'MARCA':str(r.get('MARCA','SEM MARCA')).upper(),'TIPO_EMBALAGEM':str(r.get('TIPO_EMBALAGEM','PALETE')).upper(),'QTD_POR_EMBALAGEM':safe_float(r.get('QTD_POR_EMBALAGEM',1250),1250)})
 
-    if not id_mov: st.info("DIGITE ID CADASTRADO")
-    elif not enc_m: st.error(f"ID {id_mov.upper()} NAO TEM CARACTERISTICAS - CADASTRE EM CARACTERISTICAS PRIMEIRO")
+    if not id_mov:
+        st.info("👉 JANELA 1 - DIGITE ID DA ABA CADASTRO E DE ENTER - FORMATO DIGITAL - OUTRAS JANELAS PREENCHEM SOZINHAS - ATUALIZA ESTOQUE E GRAFICOS AUTO")
+    elif not materiais_da_id:
+        st.error(f"ID {id_mov.upper()} NAO CADASTRADO - Vá na ABA 3 CADASTRO - TEM QUE TER")
     else:
-        st.success(f"ID {id_mov.upper()} - {desc_m} - {tipo_emb_m} com {qtd_emb_m:,.0f} por embalagem - SISTEMA VAI CALCULAR")
-        saldo_id=[v for v in get_saldos()[0].values() if v['ID']==id_mov.upper() and v['SALDO']>0]
-        if saldo_id: st.dataframe(pd.DataFrame(saldo_id)[['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','LOTE','LOCAL','SALDO','EMBALAGENS','ULT_ATUAL','CALCULO']],use_container_width=True)
+        if len(materiais_da_id)>1:
+            opcoes=[f"{m['DESCRICAO']} | {m['MARCA']} | {m['TIPO_EMBALAGEM']} {m['QTD_POR_EMBALAGEM']:,.0f}" for m in materiais_da_id]
+            mat_escolhido_str=st.selectbox(f"ID {id_mov.upper()} TEM {len(materiais_da_id)} MATERIAIS - ESCOLHA - AUTO PELA ID", opcoes, key="mat_escolhido_final_apagar")
+            idx=opcoes.index(mat_escolhido_str); mat=materiais_da_id[idx]
+        else:
+            mat=materiais_da_id[0]; st.success(f"✅ ID {id_mov.upper()} - JANELAS AUTO PREENCHIDAS - ATUALIZA ESTOQUE/GRAFICOS AUTO")
 
-        with st.form("form_mov_calc"):
-            st.text_input("ID",value=id_mov.upper(),disabled=True)
-            st.write(f"Característica: **{tipo_emb_m} - {qtd_emb_m:,.0f} por embalagem** - Cálculo automático")
-            c1,c2=st.columns(2)
-            with c1:
-                if lotes: sel=st.selectbox("LOTE* - EXISTENTE OU NOVO",lotes+["NOVO LOTE"]); lote_final=st.text_input("NOVO LOTE*") if sel=="NOVO LOTE" else sel
-                else: lote_final=st.text_input("LOTE* - OBRIGATORIO")
-            with c2: marca_final=st.text_input("MARCA",value=marca_m)
-            c1,c2,c3=st.columns(3)
-            with c1: local_final=st.selectbox("LOCAL* - ONDE FICA",LOCAIS)
-            with c2: tipo_final=st.selectbox("TIPO* - ENTRADA/SAIDA",["ENTRADA","SAIDA"])
-            with c3: qtd_emb_final=st.number_input(f"QTD {tipo_emb_m}* - SISTEMA CALCULA",min_value=0.1,value=1.0,step=1.0)
+        saldos,_=get_saldos()
+        saldo_id_total=sum([v['SALDO'] for v in saldos.values() if v['ID']==id_mov.upper()])
+        ultima_retirada_str="SEM RETIRADA"
+        for m in sorted(st.session_state.mov, key=lambda x: parse_data_hora(x.get('DATA_HORA','')), reverse=True):
+            if str(m.get('ID','')).upper()==id_mov.upper() and m.get('TIPO')=="SAIDA":
+                ultima_retirada_str=m.get('DATA_HORA','') + " - BRASÍLIA"; break
+        lotes=list(set([v['LOTE'] for v in saldos.values() if v['ID']==id_mov.upper() and v['DESCRICAO']==mat['DESCRICAO'] and v['SALDO']>0]))
 
-            total_calc = qtd_emb_final * qtd_emb_m
-            st.metric(f"🔢 SISTEMA CALCULA AUTOMATICO: {qtd_emb_final} {tipo_emb_m} x {qtd_emb_m:,.0f} = ", f"{total_calc:,.0f} unidades")
+        st.markdown("---")
+        st.markdown("### 🖥️ JANELAS AUTO PREENCHIDAS APÓS ENTER - ABA CADASTRO TEM QUE TER")
+        col1,col2,col3,col4=st.columns(4)
+        with col1:
+            st.markdown("**JANELA 2 - DESCRIÇÃO - AUTO PELA ID**")
+            st.text_input("DESC AUTO", value=mat['DESCRICAO'], disabled=True, key="j2_desc_final", label_visibility="collapsed")
+        with col2:
+            st.markdown("**JANELA 3 - TIPO EMB - AUTO**")
+            st.text_input("TIPO AUTO", value=mat['TIPO_EMBALAGEM'], disabled=True, key="j3_tipo_final", label_visibility="collapsed")
+        with col3:
+            st.markdown("**JANELA 4 - QTD/EMB - AUTO**")
+            st.text_input("QTD AUTO", value=f"{mat['QTD_POR_EMBALAGEM']:,.0f}", disabled=True, key="j4_qtd_final", label_visibility="collapsed")
+        with col4:
+            st.markdown("**JANELA 5 - MARCA - AUTO**")
+            st.text_input("MARCA AUTO", value=mat['MARCA'], disabled=True, key="j5_marca_final", label_visibility="collapsed")
 
-            if st.form_submit_button(f"CONFIRMAR {tipo_final} - GUARDA - CALCULO {total_calc:,.0f}",type="primary",use_container_width=True):
-                if not lote_final:
-                    st.error("LOTE OBRIGATORIO")
-                else:
-                    agora_str=datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
-                    base={"ID":id_mov.upper(),"LOTE":lote_final.upper().strip(),"MARCA":marca_final.upper() if marca_final else "SEM MARCA","DESCRICAO":desc_m,"PALETES":qtd_emb_final,"TOTAL_QTD":total_calc,"DATA":agora_str.split(" ")[0],"DATA_HORA":agora_str,"TIPO_EMBALAGEM":tipo_emb_m,"QTD_POR_EMBALAGEM":qtd_emb_m}
-                    if local_final==LOCAL_GALPAO and tipo_final=="ENTRADA": st.session_state.mov.append({**base,"TIPO":"ENTRADA","LOCAL_MOV":LOCAL_GALPAO})
-                    elif local_final==LOCAL_GALPAO and tipo_final=="SAIDA":
-                        st.session_state.mov.append({**base,"TIPO":"SAIDA","LOCAL_MOV":LOCAL_GALPAO}); st.session_state.mov.append({**base,"TIPO":"ENTRADA","LOCAL_MOV":LOCAL_OFICINA})
-                    elif local_final==LOCAL_SALA and tipo_final=="ENTRADA":
-                        st.session_state.mov.append({**base,"TIPO":"SAIDA","LOCAL_MOV":LOCAL_GALPAO}); st.session_state.mov.append({**base,"TIPO":"ENTRADA","LOCAL_MOV":LOCAL_SALA})
-                    elif local_final==LOCAL_SALA and tipo_final=="SAIDA":
-                        st.session_state.mov.append({**base,"TIPO":"SAIDA","LOCAL_MOV":LOCAL_SALA}); st.session_state.mov.append({**base,"TIPO":"ENTRADA","LOCAL_MOV":LOCAL_OFICINA})
-                    else: st.session_state.mov.append({**base,"TIPO":tipo_final,"LOCAL_MOV":local_final})
-                    salvar_tudo(); st.success(f"✅ GUARDADO - CALCULO {total_calc:,.0f} - MOV:{len(st.session_state.mov)}"); st.rerun()
-    if st.session_state.mov: st.dataframe(df_safe_sort(pd.DataFrame(st.session_state.mov),False).head(20),use_container_width=True)
+        st.markdown("### ✍️ VOCE PREENCHE APENAS - ENTRADA/SAIDA - ATUALIZA ESTOQUE/GRAFICOS AUTO")
+        c_lote,c_local,c_tipo,c_qtd=st.columns(4)
+        with c_lote:
+            st.markdown("**JANELA 6 - LOTE - VOCE PREENCHE**")
+            if lotes:
+                sel=st.selectbox("LOTE", lotes+["NOVO LOTE"], key="j6_lote_sel_final", label_visibility="collapsed")
+                lote_final=st.text_input("NOVO LOTE*", key="j6_lote_novo_final") if sel=="NOVO LOTE" else sel
+                if sel!="NOVO LOTE": st.text_input("LOTE SEL", value=lote_final, disabled=True, key="j6_lote_show_final")
+            else:
+                lote_final=st.text_input("LOTE* - VOCE PREENCHE", key="j6_lote_final", label_visibility="collapsed")
+        with c_local:
+            st.markdown("**JANELA 7 - LOCAL - VOCE**")
+            local_final=st.selectbox("LOCAL*", LOCAIS, key="j7_local_final", label_visibility="collapsed")
+        with c_tipo:
+            st.markdown("**JANELA 8 - ENTRADA/SAIDA - VOCE**")
+            tipo_final=st.selectbox("TIPO*", ["ENTRADA","SAIDA"], key="j8_tipo_final", label_visibility="collapsed")
+        with c_qtd:
+            st.markdown("**JANELA 9 - QTD - VOCE - CALCULA AUTO**")
+            qtd_emb_final=st.number_input(f"QTD {mat['TIPO_EMBALAGEM']}*", min_value=0.1, value=1.0, step=1.0, key="j9_qtd_final", label_visibility="collapsed")
+            total_calc=qtd_emb_final*mat['QTD_POR_EMBALAGEM']
+            st.metric(f"{qtd_emb_final} x {mat['QTD_POR_EMBALAGEM']:,.0f}", f"{total_calc:,.0f}")
 
-# ========== 5 ESTOQUE CALCULADO - MOSTRA CARACTERISTICAS + CALCULO + DATA/HORA ==========
+        st.markdown("### 📊 JANELA 10 - ULTIMA - TOTAL GERAL ID + UNIDADE + DATA ULTIMA RETIRADA BRASÍLIA - ATUALIZA AUTO")
+        cj1,cj2,cj3,cj4=st.columns(4)
+        with cj1: st.metric(f"TOTAL GERAL ID {id_mov.upper()} - AUTO", f"{saldo_id_total:,.0f}", delta=f"+{total_calc:,.0f}" if tipo_final=="ENTRADA" else f"-{total_calc:,.0f}")
+        with cj2: st.metric("UNIDADE - AUTO PELA ID", f"{mat['TIPO_EMBALAGEM']}", delta=f"{mat['QTD_POR_EMBALAGEM']:,.0f}/emb")
+        with cj3: st.metric("DATA ULTIMA RETIRADA - BRASÍLIA - AUTO", f"{ultima_retirada_str}")
+        with cj4: st.metric(f"ESTA MOV {tipo_final} - CALCULO AUTO", f"{total_calc:,.0f}")
+
+        if st.button(f"✅ CONFIRMAR {tipo_final} - ID {id_mov.upper()} - {total_calc:,.0f} - ATUALIZA ESTOQUE/GRAFICOS AUTO - GUARDA 100%", type="primary", use_container_width=True, key="btn_confirm_final"):
+            if not lote_final or str(lote_final).strip()=="": st.error("LOTE OBRIGATORIO")
+            else:
+                agora_str=datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
+                base={"ID":id_mov.upper(),"DESCRICAO":mat['DESCRICAO'],"LOTE":lote_final.upper().strip(),"MARCA":mat['MARCA'],"PALETES":qtd_emb_final,"TOTAL_QTD":total_calc,"DATA":agora_str.split(" ")[0],"DATA_HORA":agora_str,"TIPO_EMBALAGEM":mat['TIPO_EMBALAGEM'],"QTD_POR_EMBALAGEM":mat['QTD_POR_EMBALAGEM']}
+                if local_final==LOCAL_GALPAO and tipo_final=="ENTRADA": st.session_state.mov.append({**base,"TIPO":"ENTRADA","LOCAL_MOV":LOCAL_GALPAO})
+                elif local_final==LOCAL_GALPAO and tipo_final=="SAIDA":
+                    st.session_state.mov.append({**base,"TIPO":"SAIDA","LOCAL_MOV":LOCAL_GALPAO}); st.session_state.mov.append({**base,"TIPO":"ENTRADA","LOCAL_MOV":LOCAL_OFICINA})
+                elif local_final==LOCAL_SALA and tipo_final=="ENTRADA":
+                    st.session_state.mov.append({**base,"TIPO":"SAIDA","LOCAL_MOV":LOCAL_GALPAO}); st.session_state.mov.append({**base,"TIPO":"ENTRADA","LOCAL_MOV":LOCAL_SALA})
+                elif local_final==LOCAL_SALA and tipo_final=="SAIDA":
+                    st.session_state.mov.append({**base,"TIPO":"SAIDA","LOCAL_MOV":LOCAL_SALA}); st.session_state.mov.append({**base,"TIPO":"ENTRADA","LOCAL_MOV":LOCAL_OFICINA})
+                else: st.session_state.mov.append({**base,"TIPO":tipo_final,"LOCAL_MOV":local_final})
+                salvar_tudo()
+                st.success(f"✅ ENTRADA/SAIDA GUARDADA - ATUALIZOU ESTOQUE E GRAFICOS AUTO - TOTAL GERAL ID {id_mov.upper()} AGORA {saldo_id_total+ (total_calc if tipo_final=='ENTRADA' else -total_calc):,.0f} - GUARDA 100% MESMO SE DESLIGAR - MOV:{len(st.session_state.mov)}")
+                st.balloons()
+                st.rerun()
+
+    st.divider()
+    st.subheader("📋 ULTIMAS 20 ENTRADAS/SAIDAS - COM OPÇÃO APAGAR REGISTRO - ATUALIZA ESTOQUE/GRAFICOS AUTO")
+    if st.session_state.mov:
+        df_mov_show=df_safe_sort(pd.DataFrame(st.session_state.mov), False).head(20)
+        st.dataframe(df_mov_show, use_container_width=True)
+
+        st.markdown("### 🗑️ APAGAR REGISTRO - ENTRADA/SAIDA - ATUALIZA ESTOQUE/GRAFICOS AUTO - GUARDA 100%")
+        # Cria lista para apagar
+        opcoes_apagar=[]
+        for idx,row in df_mov_show.iterrows():
+            opcoes_apagar.append(f"{idx} | {row.get('ID','')} - {row.get('DESCRICAO','')} - {row.get('LOTE','')} - {row.get('TIPO','')} - {row.get('TOTAL_QTD','')} - {row.get('DATA_HORA','')}")
+
+        sel_apagar=st.selectbox("SELECIONE REGISTRO PARA APAGAR - ENTRADA/SAIDA", [""]+opcoes_apagar, key="apagar_mov")
+
+        c_apagar1,c_apagar2=st.columns(2)
+        with c_apagar1:
+            if sel_apagar:
+                if st.button(f"🗑️ APAGAR REGISTRO SELECIONADO - CONFIRMAR - ATUALIZA AUTO", type="primary", key="btn_apagar_mov"):
+                    try:
+                        idx_str=sel_apagar.split(" | ")[0]
+                        idx=int(idx_str)
+                        # Apaga do session_state.mov pelo indice original
+                        # Precisa achar no st.session_state.mov
+                        # Vamos apagar pelo match de todos os campos
+                        row_to_delete=df_mov_show.loc[idx] if idx in df_mov_show.index else None
+                        if row_to_delete is not None:
+                            # Remove uma ocorrencia igual
+                            for i, m in enumerate(st.session_state.mov):
+                                if str(m.get('ID','')).upper()==str(row_to_delete.get('ID','')).upper() and str(m.get('LOTE','')).upper()==str(row_to_delete.get('LOTE','')).upper() and str(m.get('DATA_HORA',''))==str(row_to_delete.get('DATA_HORA','')) and str(m.get('TIPO',''))==str(row_to_delete.get('TIPO','')):
+                                    st.session_state.mov.pop(i)
+                                    break
+                        salvar_tudo()
+                        st.success(f"🗑️ APAGADO - ESTOQUE E GRAFICOS ATUALIZADOS AUTO - GUARDADO 100% - MOV:{len(st.session_state.mov)}")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro apagar: {e}")
+        with c_apagar2:
+            if st.button("🗑️ APAGAR ULTIMO REGISTRO - ENTRADA/SAIDA - RAPIDO", key="btn_apagar_ultimo"):
+                if st.session_state.mov:
+                    st.session_state.mov.pop()
+                    salvar_tudo()
+                    st.success(f"🗑️ ULTIMO APAGADO - ESTOQUE/GRAFICOS ATUALIZADOS AUTO - GUARDA 100% - MOV:{len(st.session_state.mov)}")
+                    st.rerun()
+
 with tab_est:
-    st.header("5 - ESTOQUE - SISTEMA CALCULOU - MOSTRA CARACTERISTICAS + DATA/HORA ULTIMA ATUALIZACAO")
-    saldos,carac = get_saldos()
+    st.header("5 - ESTOQUE - ATUALIZA AUTOMATICO APÓS ENTRADA/SAIDA - FORMATO DIGITAL")
+    saldos,_=get_saldos()
     lista=[v for v in saldos.values() if v['SALDO']>0]
-    if not lista: st.info("Sem estoque")
+    if not lista: st.info("Sem estoque - Faça ENTRADA/SAIDA na aba 4 - Atualiza auto")
     else:
         df_est=pd.DataFrame(lista)
+        totais={}; ult={}
+        for v in lista: totais[v['ID']]=totais.get(v['ID'],0)+v['SALDO']
+        for m in st.session_state.mov:
+            if m.get('TIPO')=="SAIDA":
+                idp=str(m.get('ID','')).upper()
+                dh=parse_data_hora(m.get('DATA_HORA',''))
+                if idp not in ult or dh>ult[idp]['dt']: ult[idp]={'dt':dh,'data_hora':m.get('DATA_HORA','')}
+        df_est['TOTAL_GERAL_ID']=df_est['ID'].apply(lambda x: totais.get(x,0))
+        df_est['TOTAL_GERAL_ID_FORMATADO']=df_est['TOTAL_GERAL_ID'].apply(lambda x: f"{x:,.0f}")
+        df_est['UNIDADE_MEDIDA']=df_est['TIPO_EMBALAGEM']
+        df_est['DATA_ULTIMA_RETIRADA_BRASILIA']=df_est['ID'].apply(lambda x: ult.get(x,{}).get('data_hora','SEM RETIRADA')+" BRASÍLIA" if x in ult else "SEM RETIRADA BRASÍLIA")
         df_est['DATA_HORA_ULTIMA_ATUALIZACAO']=df_est['ULT_ATUAL']
-        df_est['AGORA']=agora.strftime("%d/%m/%Y %H:%M:%S")
-        df_est['SALDO_FORMATADO']=df_est['SALDO'].apply(lambda x: f"{x:,.0f}")
-        df_est['CALCULO_SISTEMA']=df_est['CALCULO']
-        st.dataframe(df_est[['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','LOTE','MARCA','LOCAL','EMBALAGENS','SALDO','SALDO_FORMATADO','CALCULO_SISTEMA','DATA_HORA_ULTIMA_ATUALIZACAO','AGORA']].sort_values(by='ID'),use_container_width=True,height=600)
-        c1,c2,c3=st.columns(3)
-        with c1: st.metric("SALDO TOTAL SISTEMA CALCULOU",f"{df_est['SALDO'].sum():,.0f}")
-        with c2: st.metric("TOTAL EMBALAGENS",f"{df_est['EMBALAGENS'].sum():,.1f}")
-        with c3: st.metric("QTD IDS",f"{df_est['ID'].nunique()}")
+        df_est['AGORA_BRASILIA']=agora.strftime("%d/%m/%Y %H:%M:%S")+" BRASÍLIA"
+        st.dataframe(df_est[['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','UNIDADE_MEDIDA','LOTE','LOCAL','EMBALAGENS','SALDO','TOTAL_GERAL_ID','TOTAL_GERAL_ID_FORMATADO','DATA_ULTIMA_RETIRADA_BRASILIA','DATA_HORA_ULTIMA_ATUALIZACAO','AGORA_BRASILIA']].sort_values(by=['ID','DESCRICAO']), use_container_width=True, height=600)
+        st.metric("SALDO TOTAL - ATUALIZA AUTO APÓS ENTRADA/SAIDA", f"{df_est['SALDO'].sum():,.0f}")
 
 with tab_busca:
-    st.header("6 - BUSCA ID")
-    id_b=st.text_input("ID BUSCA",key="busca_id")
+    st.header("6 - BUSCA ID - ATUALIZA AUTO")
+    id_b=st.text_input("ID BUSCA", key="busca_id_final")
     if id_b:
         saldos,_=get_saldos()
         lista=[v for v in saldos.values() if v['ID']==id_b.upper().strip() and v['SALDO']>0]
-        if lista: st.dataframe(pd.DataFrame(lista)[['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','LOTE','LOCAL','SALDO','DATA_HORA_ULTIMA_ATUALIZACAO' if 'DATA_HORA_ULTIMA_ATUALIZACAO' in pd.DataFrame(lista).columns else 'ULT_ATUAL']],use_container_width=True)
+        if lista: st.dataframe(pd.DataFrame(lista), use_container_width=True)
 
 with tab_grd:
-    st.header(f"7 - GRD - VOCE DECIDE HORAS - {st.session_state.tempo_quarentena}H")
-    c_h1,c_h2,c_h3=st.columns([2,1,1])
-    with c_h1: nova_hora=st.number_input("⏰ VOCE DECIDE HORAS",min_value=1,max_value=720,value=int(st.session_state.tempo_quarentena),step=1,key="input_horas_grd")
-    with c_h2:
-        if st.button("💾 SALVAR HORAS",type="primary"):
-            st.session_state.tempo_quarentena=int(nova_hora); st.success(f"AGORA {nova_hora}H"); st.rerun()
-    with c_h3: st.metric("VOCE DECIDIU",f"{st.session_state.tempo_quarentena}H")
+    st.header(f"7 - GRD - VOCE DECIDE HORAS - {st.session_state.tempo_quarentena}H - ATUALIZA AUTO")
+    c1,c2=st.columns([3,1])
+    with c1: nova_hora=st.number_input("⏰ VOCE DECIDE HORAS", min_value=1, max_value=720, value=int(st.session_state.tempo_quarentena), step=1)
+    with c2:
+        if st.button("SALVAR HORAS"): st.session_state.tempo_quarentena=int(nova_hora); st.rerun()
     total_sala,pend,disp=get_saldo_sala_com_quarentena(st.session_state.tempo_quarentena)
-    saldos,_=get_saldos()
-    if not total_sala: total_sala={k:v for k,v in saldos.items() if v['LOCAL']==LOCAL_SALA and v['SALDO']>0}; disp=total_sala.copy()
-    df_total=pd.DataFrame(list(total_sala.values())) if total_sala else pd.DataFrame()
-    if not df_total.empty: st.dataframe(df_total[['ID','DESCRICAO','TIPO_EMBALAGEM','LOTE','SALDO','ULT_ATUAL']],use_container_width=True)
-    ids_disp=sorted(list(set([v['ID'] for v in disp.values()]))) if disp else []
-    if ids_disp:
-        id_g=st.selectbox("ID",ids_disp,key="id_grd")
-        saldo_id=[v for v in disp.values() if v['ID']==id_g]
-        lote_sel=st.selectbox("LOTE",sorted(list(set([v['LOTE'] for v in saldo_id]))),key="lote_grd")
-        saldo_lote=[v for v in saldo_id if v['LOTE']==lote_sel][0]
-        qtd=st.number_input(f"QTD {saldo_lote['TIPO_EMBALAGEM']} MAX {saldo_lote['EMBALAGENS']:.1f}",value=1.0,key="qtd_grd")
-        os_g=st.text_input("OS*",key="os_grd")
-        if st.button(f"GERAR GRD {st.session_state.tempo_quarentena}H",type="primary"):
-            num=f"GRD-{agora.strftime('%Y%m%d%H%M%S')}"; tot=qtd*saldo_lote['QTD_POR_EMBALAGEM']
-            st.session_state.grd.append({"NUM_GRD":num,"ID":id_g,"DESCRICAO":saldo_lote['DESCRICAO'],"LOTE":lote_sel,"MARCA":saldo_lote['MARCA'],"QTD_PALETES":qtd,"TOTAL_QTD":tot,"ORIGEM":LOCAL_SALA,"DESTINO":LOCAL_OFICINA,"OS":os_g,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
-            st.session_state.mov.append({"ID":id_g,"LOTE":lote_sel,"MARCA":saldo_lote['MARCA'],"DESCRICAO":saldo_lote['DESCRICAO'],"TIPO":"SAIDA","PALETES":qtd,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_SALA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
-            st.session_state.mov.append({"ID":id_g,"LOTE":lote_sel,"MARCA":saldo_lote['MARCA'],"DESCRICAO":saldo_lote['DESCRICAO'],"TIPO":"ENTRADA","PALETES":qtd,"TOTAL_QTD":tot,"LOCAL_MOV":LOCAL_OFICINA,"DATA":agora.strftime("%d/%m/%Y"),"DATA_HORA":agora.strftime("%d/%m/%Y %H:%M:%S")})
-            salvar_tudo(); st.success(f"GRD {num} GUARDADO CALCULO {tot:,.0f}"); st.rerun()
-    if st.session_state.grd: st.dataframe(df_safe_sort(pd.DataFrame(st.session_state.grd),False),use_container_width=True)
+    if total_sala: st.dataframe(pd.DataFrame(list(total_sala.values()))[['ID','DESCRICAO','LOTE','SALDO']], use_container_width=True)
+    if st.session_state.grd: st.dataframe(df_safe_sort(pd.DataFrame(st.session_state.grd), False), use_container_width=True)
 
-# ========== 8 GRAFICO EMPILHADO POR ID - CADA BARRA UMA COR - DATA/HORA ULTIMA ATUALIZACAO + NUMEROS GRANDES ==========
 with tab_graf:
-    st.header(f"8 - GRAFICO BARRAS EMPILHADAS - CADA ID UMA COR - SALDO CALCULADO + DATA/HORA ULTIMA ATUALIZACAO - {agora.strftime('%d/%m/%Y %H:%M:%S')}")
-
-    saldos,carac = get_saldos()
+    st.header(f"8 - GRAFICO - ATUALIZA AUTOMATICO APÓS ENTRADA/SAIDA - BARRAS EMPILHADAS CORES + DATA/HORA BRASÍLIA + NUMEROS GRANDES - {agora.strftime('%d/%m/%Y %H:%M:%S')} BRASÍLIA")
+    saldos,_=get_saldos()
     lista=[v for v in saldos.values() if v['SALDO']>0]
-
-    if not lista:
-        st.warning("Sem estoque para gráfico - cadastre características e faça movimentação")
+    if not lista: st.warning("Sem estoque - Faça ENTRADA/SAIDA na aba 4 - Grafico atualiza auto")
     else:
         df_estoque=pd.DataFrame(lista)
-
-        # PEGA ULTIMA DATA/HORA POR ID
         ultimas={}
         for m in st.session_state.mov:
             try:
-                idp=str(m.get('ID','')).upper().strip()
-                if not idp: continue
-                dh=str(m.get('DATA_HORA',m.get('DATA','')))
-                dtm=parse_data_hora(dh)
-                if idp not in ultimas or dtm>ultimas[idp]['dt']:
-                    ultimas[idp]={'dt':dtm,'data_hora':dh,'tipo':m.get('TIPO','')}
+                chave=f"{str(m.get('ID','')).upper()}__{str(m.get('DESCRICAO','')).upper()}"
+                dh=str(m.get('DATA_HORA','')); dtm=parse_data_hora(dh)
+                if chave not in ultimas or dtm>ultimas[chave]['dt']: ultimas[chave]={'dt':dtm,'data_hora':dh+" BRASÍLIA"}
             except: continue
-
-        df_estoque['DATA_HORA_ULTIMA_ATUALIZACAO']=df_estoque['ID'].apply(lambda x: ultimas.get(x,{}).get('data_hora', df_estoque[df_estoque['ID']==x]['ULT_ATUAL'].iloc[0] if not df_estoque[df_estoque['ID']==x].empty else 'SEM MOV'))
-        df_estoque['ULTIMO_TIPO']=df_estoque['ID'].apply(lambda x: ultimas.get(x,{}).get('tipo',''))
-
-        # GRAFICO 1 - BARRAS EMPILHADAS - CADA ID UMA COR - LOCAL EMPILHADO
-        df_emp = df_estoque.groupby(['ID','LOCAL'],as_index=False)['SALDO'].sum()
-        df_ult = df_estoque.groupby('ID',as_index=False).agg({'DATA_HORA_ULTIMA_ATUALIZACAO':'first','ULTIMO_TIPO':'first','SALDO':'sum','DESCRICAO':'first','TIPO_EMBALAGEM':'first','QTD_POR_EMBALAGEM':'first'}).rename(columns={'SALDO':'TOTAL_ID'})
-        df_emp = df_emp.merge(df_ult,on='ID',how='left')
-        df_emp['TEXTO_GRANDE']=df_emp['SALDO'].apply(lambda x: f"{x:,.0f}")
-        df_emp=df_emp.sort_values(by='ID')
-
-        # CORES DIFERENTES POR ID
-        fig_stack = px.bar(
-            df_emp,
-            x='ID',
-            y='SALDO',
-            color='LOCAL',
-            text='TEXTO_GRANDE',
-            title=f"SALDO TOTAL EMPILHADO POR LOCAL - CADA ID UMA BARRA - {agora.strftime('%d/%m/%Y %H:%M:%S')}<br>DATA/HORA ULTIMA ATUALIZACAO NO HOVER",
-            hover_data=['DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','DATA_HORA_ULTIMA_ATUALIZACAO','ULTIMO_TIPO','TOTAL_ID'],
-            barmode='stack',
-            color_discrete_sequence=px.colors.qualitative.Bold
-        )
-        fig_stack.update_traces(textposition='inside', textfont=dict(size=20, color='white', family='Arial Black'))
-        fig_stack.update_layout(height=650, title_font_size=20, xaxis_title="ID DO MATERIAL - CADA BARRA UMA COR DIFERENTE", yaxis_title="SALDO TOTAL CALCULADO PELO SISTEMA", font=dict(size=14))
-        st.plotly_chart(fig_stack,use_container_width=True,key=f"stack_{agora.strftime('%H%M%S')}")
-
-        # GRAFICO 2 - BARRAS SIMPLES - CADA ID UMA COR DIFERENTE - NUMEROS GIGANTES + DATA/HORA
-        df_total_id = df_estoque.groupby(['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM'],as_index=False).agg({'SALDO':'sum','DATA_HORA_ULTIMA_ATUALIZACAO':'first','ULTIMO_TIPO':'first'})
-        df_total_id['TEXTO_NUM']=df_total_id['SALDO'].apply(lambda x: f"{x:,.0f}")
-        df_total_id['LABEL_GIGANTE']=df_total_id.apply(lambda r: f"{r['SALDO']:,.0f}<br>{r['DATA_HORA_ULTIMA_ATUALIZACAO']}",axis=1)
-        df_total_id=df_total_id.sort_values(by='SALDO',ascending=False)
-
-        fig_total = px.bar(
-            df_total_id,
-            x='ID',
-            y='SALDO',
-            text='TEXTO_NUM',
-            color='ID',
-            title=f"SALDO EM ESTOQUE POR ID - CADA BARRA COR DIFERENTE - NUMEROS GRANDES + DATA/HORA ULTIMA ATUALIZACAO - {agora.strftime('%d/%m/%Y %H:%M:%S')}",
-            hover_data=['DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','DATA_HORA_ULTIMA_ATUALIZACAO','ULTIMO_TIPO'],
-            color_discrete_sequence=px.colors.qualitative.Set1
-        )
-        fig_total.update_traces(textposition='outside', textfont=dict(size=20, color='black', family='Arial Black'), cliponaxis=False)
-        fig_total.update_layout(height=700, title_font_size=22, xaxis_title="ID - CADA COR UMA ID DIFERENTE", yaxis_title="SALDO TOTAL QUE O SISTEMA CALCULOU", showlegend=True)
-        st.plotly_chart(fig_total,use_container_width=True,key=f"total_{agora.strftime('%H%M%S')}")
-
-        # TABELA COM CALCULO + DATA/HORA ULTIMA ATUALIZACAO - NUMEROS GRANDES
-        st.subheader("📊 TABELA - SALDO CALCULADO + DATA/HORA ULTIMA ATUALIZACAO - NUMEROS GRANDES")
-        df_total_id['AGORA']=agora.strftime("%d/%m/%Y %H:%M:%S")
-        df_total_id['CALCULO_SISTEMA']=df_total_id.apply(lambda r: f"{r['TIPO_EMBALAGEM']} x {r['QTD_POR_EMBALAGEM']:,.0f} = {r['SALDO']:,.0f}",axis=1)
-        df_total_id['SALDO_FORMATADO']=df_total_id['SALDO'].apply(lambda x: f"{x:,.0f}")
-        st.dataframe(df_total_id[['ID','DESCRICAO','TIPO_EMBALAGEM','QTD_POR_EMBALAGEM','SALDO','SALDO_FORMATADO','CALCULO_SISTEMA','DATA_HORA_ULTIMA_ATUALIZACAO','ULTIMO_TIPO','AGORA']].sort_values(by='SALDO',ascending=False),use_container_width=True,height=500)
-
-        c1,c2,c3,c4=st.columns(4)
-        with c1: st.metric("🔢 SALDO TOTAL SISTEMA CALCULOU",f"{df_estoque['SALDO'].sum():,.0f}")
-        with c2:
-            if ultimas:
-                ultima_geral=max([v['dt'] for v in ultimas.values()])
-                st.metric("🕐 ULTIMA ATUALIZACAO GERAL",ultima_geral.strftime("%d/%m/%Y %H:%M:%S"))
-        with c3: st.metric("📦 QTD IDS - CADA COR",f"{df_estoque['ID'].nunique()}")
-        with c4: st.metric("⏰ VOCE DECIDIU",f"{st.session_state.tempo_quarentena}H")
+        df_estoque['CHAVE']=df_estoque['ID']+"__"+df_estoque['DESCRICAO']
+        df_estoque['DATA_HORA_ULTIMA_BRASILIA']=df_estoque['CHAVE'].apply(lambda x: ultimas.get(x,{}).get('data_hora','SEM MOV'))
+        df_estoque['TOTAL_GERAL_ID']=df_estoque.groupby('ID')['SALDO'].transform('sum')
+        df_emp=df_estoque.groupby(['ID','DESCRICAO','LOCAL'],as_index=False)['SALDO'].sum()
+        df_emp['TEXTO']=df_emp['SALDO'].apply(lambda x: f"{x:,.0f}")
+        df_ult=df_estoque.groupby(['ID','DESCRICAO'],as_index=False).agg({'DATA_HORA_ULTIMA_BRASILIA':'first','SALDO':'sum','TIPO_EMBALAGEM':'first','TOTAL_GERAL_ID':'first'}).rename(columns={'SALDO':'TOTAL_MAT'})
+        df_emp=df_emp.merge(df_ult,on=['ID','DESCRICAO'],how='left')
+        fig=px.bar(df_emp, x='ID', y='SALDO', color='DESCRICAO', text='TEXTO', barmode='stack', title=f"ESTOQUE ATUALIZADO AUTO APÓS ENTRADA/SAIDA - EMPILHADO CORES DIFERENTES - TOTAL GERAL ID + DATA/HORA BRASÍLIA - {agora.strftime('%d/%m/%Y %H:%M:%S')} BRASÍLIA", hover_data=['TIPO_EMBALAGEM','DATA_HORA_ULTIMA_BRASILIA','TOTAL_GERAL_ID','TOTAL_MAT'], color_discrete_sequence=px.colors.qualitative.Bold)
+        fig.update_traces(textposition='inside', textfont=dict(size=16, color='white', family='Arial Black'))
+        fig.update_layout(height=700)
+        st.plotly_chart(fig, use_container_width=True, key=f"graf_auto_{agora.strftime('%H%M%S')}")
+        st.success(f"✅ GRAFICO ATUALIZADO AUTO APÓS ENTRADA/SAIDA - TOTAL GERAL ID + UNIDADE + DATA ULTIMA RETIRADA BRASÍLIA - {agora.strftime('%d/%m/%Y %H:%M:%S')} BRASÍLIA")
 
 with tab_hist:
-    st.header("9 - HISTORICO")
+    st.header("9 - HISTORICO - COM APAGAR REGISTRO - ATUALIZA ESTOQUE/GRAFICOS AUTO - GUARDA 100%")
     if not st.session_state.mov: st.warning("Sem mov")
-    else: st.dataframe(df_safe_sort(pd.DataFrame(st.session_state.mov),False),use_container_width=True,height=500)
+    else:
+        df_all=pd.DataFrame(st.session_state.mov)
+        st.dataframe(df_safe_sort(df_all, False), use_container_width=True, height=400)
+        st.markdown("### 🗑️ APAGAR REGISTRO - HISTORICO - ATUALIZA AUTO")
+        opcoes_hist=[f"{i} | {row.get('ID','')} - {row.get('DESCRICAO','')} - {row.get('LOTE','')} - {row.get('TIPO','')} - {row.get('TOTAL_QTD','')} - {row.get('DATA_HORA','')}" for i,row in df_all.iterrows()]
+        sel_hist=st.selectbox("SELECIONE PARA APAGAR - HISTORICO", [""]+opcoes_hist, key="apagar_hist")
+        if sel_hist:
+            if st.button("🗑️ APAGAR SELECIONADO - HISTORICO - CONFIRMAR - ATUALIZA AUTO - GUARDA 100%", type="primary", key="btn_apagar_hist"):
+                try:
+                    idx=int(sel_hist.split(" | ")[0])
+                    # Remove do mov
+                    if 0 <= idx < len(st.session_state.mov):
+                        st.session_state.mov.pop(idx)
+                        salvar_tudo()
+                        st.success(f"🗑️ APAGADO HISTORICO - ESTOQUE E GRAFICOS ATUALIZADOS AUTO - GUARDA 100% - MOV:{len(st.session_state.mov)}")
+                        st.rerun()
+                except Exception as e: st.error(f"Erro: {e}")
 
-st.caption(f"REFORMA FORNOS - CARACTERISTICAS ID DESCRICAO TIPO_EMBALAGEM QTD_POR_EMBALAGEM - SISTEMA CALCULA - ESTOQUE + GRAFICO BARRAS EMPILHADAS CADA ID COR DIFERENTE + DATA/HORA ULTIMA ATUALIZACAO - {agora.strftime('%d/%m/%Y %H:%M:%S')} - CAD:{len(st.session_state.cad)} MOV:{len(st.session_state.mov)}")
+st.caption(f"REFORMA FORNOS - ABA CADASTRO TEM QUE TER + ABA ENTRADA/SAIDA ATUALIZA ESTOQUE/GRAFICOS AUTO + APAGAR REGISTRO + GUARDA 100% MESMO SE DESLIGAR - {agora.strftime('%d/%m/%Y %H:%M:%S')} BRASÍLIA - CAD:{len(st.session_state.cad)} MOV:{len(st.session_state.mov)} GRD:{len(st.session_state.grd)}")
