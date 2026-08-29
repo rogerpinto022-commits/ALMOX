@@ -159,7 +159,7 @@ def get_saldo_sala_com_quarentena():
 
 agora=datetime.now(fuso)
 st.title(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M:%S')}")
-tabs = st.tabs(["ADMIN","DASHBOARD","CADASTRO","MOVIMENTACAO","ESTOQUE","BUSCA ID","GRD SALA ANEXA","GRAFICOS","HISTORICO COM FILTRO ID E ENTRADA/SAIDA"])
+tabs = st.tabs(["ADMIN","DASHBOARD","CADASTRO","MOVIMENTACAO","ESTOQUE","BUSCA ID","GRD SALA ANEXA","GRAFICOS","HISTORICO FILTRO"])
 tab_admin, tab_dash, tab_cad, tab_mov, tab_est, tab_busca, tab_grd, tab_graf, tab_hist = tabs
 
 with tab_admin:
@@ -190,7 +190,7 @@ with tab_dash:
     if not df.empty:
         df_g=df.groupby('LOCAL', as_index=False)['SALDO'].sum()
         fig=px.bar(df_g, x='LOCAL', y='SALDO', color='LOCAL')
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="dash_local")
 
 with tab_cad:
     st.header("3 - CADASTRO AUTOMATICO")
@@ -281,8 +281,8 @@ with tab_est:
         st.dataframe(df.sort_values(by='ID'), use_container_width=True)
 
 with tab_busca:
-    st.header("6 - BUSCA ID - COM HISTORICO SEPARADO ENTRADA/SAIDA + DIA/SEMANA/MES/ANO")
-    id_b = st.text_input("DIGITE ID PARA BUSCA COMPLETA", key="id_busca_full")
+    st.header("6 - BUSCA ID - HISTORICO ENTRADA/SAIDA + DIA/SEMANA/MES/ANO")
+    id_b = st.text_input("DIGITE ID PARA BUSCA", key="id_busca_full")
     if id_b:
         id_b_upper=id_b.upper().strip()
         saldos=get_saldos()
@@ -307,22 +307,14 @@ with tab_busca:
 
             df_f=df_mov.copy()
             if tipo_filtro!="TODOS": df_f=df_f[df_f['TIPO']==tipo_filtro]
-
             col_agrup = {'DIA':'DIA','SEMANA':'SEMANA','MES':'MES','ANO':'ANO'}[tipo_periodo]
-
             df_ent=df_f[df_f['TIPO']=="ENTRADA"]
             df_sai=df_f[df_f['TIPO']=="SAIDA"]
 
-            c1,c2,c3=st.columns(3)
-            with c1: st.metric(f"ENTRADAS ID {id_b_upper}", f"{df_ent['QTD'].sum():,.0f}")
-            with c2: st.metric(f"SAIDAS ID {id_b_upper}", f"{df_sai['QTD'].sum():,.0f}")
-            with c3: st.metric(f"SALDO ID {id_b_upper}", f"{df_ent['QTD'].sum()-df_sai['QTD'].sum():,.0f}")
-
-            # GRAFICO SEPARADO
             df_g=df_f.groupby([col_agrup,'TIPO'], as_index=False)['QTD'].sum()
             if not df_g.empty:
-                fig=px.bar(df_g, x=col_agrup, y='QTD', color='TIPO', barmode='group', title=f"ID {id_b_upper} POR {tipo_periodo} - {tipo_filtro}")
-                st.plotly_chart(fig, use_container_width=True)
+                fig=px.bar(df_g, x=col_agrup, y='QTD', color='TIPO', barmode='group', title=f"ID {id_b_upper} POR {tipo_periodo}")
+                st.plotly_chart(fig, use_container_width=True, key=f"busca_geral_{id_b_upper}_{tipo_periodo}_{tipo_filtro}")
 
             col1,col2=st.columns(2)
             with col1:
@@ -330,7 +322,7 @@ with tab_busca:
                 df_ent_g=df_ent.groupby(col_agrup, as_index=False)['QTD'].sum()
                 if not df_ent_g.empty:
                     fig_ent=px.bar(df_ent_g, x=col_agrup, y='QTD', title=f"ENTRADAS ID {id_b_upper}")
-                    st.plotly_chart(fig_ent, use_container_width=True)
+                    st.plotly_chart(fig_ent, use_container_width=True, key=f"busca_ent_{id_b_upper}_{tipo_periodo}")
                 st.dataframe(df_ent_g, use_container_width=True)
                 st.dataframe(df_ent.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=200)
 
@@ -339,7 +331,7 @@ with tab_busca:
                 df_sai_g=df_sai.groupby(col_agrup, as_index=False)['QTD'].sum()
                 if not df_sai_g.empty:
                     fig_sai=px.bar(df_sai_g, x=col_agrup, y='QTD', title=f"SAIDAS ID {id_b_upper}", color_discrete_sequence=['red'])
-                    st.plotly_chart(fig_sai, use_container_width=True)
+                    st.plotly_chart(fig_sai, use_container_width=True, key=f"busca_sai_{id_b_upper}_{tipo_periodo}")
                 st.dataframe(df_sai_g, use_container_width=True)
                 st.dataframe(df_sai.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=200)
 
@@ -351,7 +343,6 @@ with tab_grd:
         df_disp['DATA_HORA_ATUALIZACAO']=agora.strftime("%d/%m/%Y %H:%M:%S")
         st.dataframe(df_disp[['ID','DESCRICAO','LOTE','SALDO','DATA_HORA_ATUALIZACAO']].sort_values(by='ID'), use_container_width=True)
 
-    # GRD conjunto mesmo numero
     ids_disponiveis_sala = sorted(list(set([v['ID'] for v in disp_sala.values()]))) if disp_sala else []
     if ids_disponiveis_sala:
         tipo_grd = st.radio("Tipo GRD", ["INDIVIDUAL", "CONJUNTO MESMO NUMERO (ID 15+16)"], key="tipo_grd_main")
@@ -403,7 +394,7 @@ with tab_graf:
     if lista:
         df=pd.DataFrame(lista)
         fig=px.bar(df.groupby('LOCAL', as_index=False)['SALDO'].sum(), x='LOCAL', y='SALDO', color='LOCAL')
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="graf_local")
 
 with tab_hist:
     st.header("9 - HISTORICO COMPLETO COM FILTRO ID INDIVIDUAL OU TODOS + ENTRADA/SAIDA + DIA/SEMANA/MES/ANO")
@@ -420,7 +411,6 @@ with tab_hist:
         df_mov_all['QTD'] = df_mov_all['TOTAL_QTD'].apply(lambda x: safe_float(x))
         df_mov_all['PAL'] = df_mov_all['PALETES'].apply(lambda x: safe_float(x))
 
-        # FILTROS
         ids_raw_hist = [str(r.get('ID','')).strip().upper() for r in st.session_state.cad if str(r.get('ID','')).strip()!='']
         ids_hist = sorted(list(set(ids_raw_hist)))
         ids_hist_com_todos = ["TODOS"] + ids_hist
@@ -435,7 +425,6 @@ with tab_hist:
         with c4:
             local_filtro = st.selectbox("LOCAL - TODOS OU ESPECIFICO", options=["TODOS"]+LOCAIS, key="filtro_local_hist")
 
-        # APLICA FILTROS
         df_filtrado = df_mov_all.copy()
 
         if id_filtro!= "TODOS":
@@ -450,7 +439,6 @@ with tab_hist:
         if df_filtrado.empty:
             st.warning(f"Sem dados para ID={id_filtro} TIPO={tipo_filtro_hist} LOCAL={local_filtro}")
         else:
-            # METRICAS
             df_ent = df_filtrado[df_filtrado['TIPO']=="ENTRADA"]
             df_sai = df_filtrado[df_filtrado['TIPO']=="SAIDA"]
 
@@ -460,31 +448,23 @@ with tab_hist:
             with c3: st.metric(f"SALDO ({id_filtro})", f"{df_ent['QTD'].sum()-df_sai['QTD'].sum():,.0f} UN")
             with c4: st.metric(f"QTD MOV ({id_filtro})", f"{len(df_filtrado)}")
 
-            # COLUNA AGRUPAMENTO
             col_agrup = {'DIA':'DIA','SEMANA':'SEMANA','MES':'MES','ANO':'ANO'}[periodo_hist]
 
-            # GRAFICO GERAL AGRUPADO ENTRADA VS SAIDA
             df_g_geral = df_filtrado.groupby([col_agrup,'TIPO'], as_index=False)['QTD'].sum()
             df_g_geral['TEXTO']=df_g_geral['QTD'].apply(lambda x: f"{x:,.0f}")
             if not df_g_geral.empty:
-                fig_geral = px.bar(df_g_geral, x=col_agrup, y='QTD', color='TIPO', barmode='group', text='TEXTO', title=f"HISTORICO {id_filtro} - {tipo_filtro_hist} - POR {periodo_hist} - ENTRADA VS SAIDA")
-                fig_geral.update_traces(textposition='inside', textfont=dict(size=12, color='white', family='Arial Black'))
-                fig_geral.update_layout(height=600)
-                st.plotly_chart(fig_geral, use_container_width=True)
+                fig_geral = px.bar(df_g_geral, x=col_agrup, y='QTD', color='TIPO', barmode='group', text='TEXTO', title=f"HISTORICO {id_filtro} - {tipo_filtro_hist} - POR {periodo_hist}")
+                st.plotly_chart(fig_geral, use_container_width=True, key=f"hist_geral_{id_filtro}_{tipo_filtro_hist}_{periodo_hist}_{local_filtro}")
 
-            # GRAFICOS SEPARADOS ENTRADA E SAIDA
             col1,col2 = st.columns(2)
             with col1:
                 st.subheader(f"🟢 ENTRADAS - ID {id_filtro} - POR {periodo_hist}")
                 df_ent_g = df_ent.groupby(col_agrup, as_index=False)['QTD'].sum().sort_values(by=col_agrup)
                 df_ent_g['TEXTO']=df_ent_g['QTD'].apply(lambda x: f"{x:,.0f}")
                 if not df_ent_g.empty:
-                    fig_ent = px.bar(df_ent_g, x=col_agrup, y='QTD', text='TEXTO', title=f"ENTRADAS {id_filtro} POR {periodo_hist}", color='QTD', color_continuous_scale='Greens')
-                    fig_ent.update_traces(textposition='inside', textfont=dict(size=14, color='white'))
-                    fig_ent.update_layout(height=400)
-                    st.plotly_chart(fig_ent, use_container_width=True)
+                    fig_ent = px.bar(df_ent_g, x=col_agrup, y='QTD', text='TEXTO', title=f"ENTRADAS {id_filtro} POR {periodo_hist}")
+                    st.plotly_chart(fig_ent, use_container_width=True, key=f"hist_ent_{id_filtro}_{periodo_hist}_{local_filtro}")
                 st.dataframe(df_ent_g, use_container_width=True)
-                st.write(f"Detalhado ENTRADAS {id_filtro}")
                 st.dataframe(df_ent.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=250)
 
             with col2:
@@ -492,38 +472,17 @@ with tab_hist:
                 df_sai_g = df_sai.groupby(col_agrup, as_index=False)['QTD'].sum().sort_values(by=col_agrup)
                 df_sai_g['TEXTO']=df_sai_g['QTD'].apply(lambda x: f"{x:,.0f}")
                 if not df_sai_g.empty:
-                    fig_sai = px.bar(df_sai_g, x=col_agrup, y='QTD', text='TEXTO', title=f"SAIDAS {id_filtro} POR {periodo_hist}", color='QTD', color_continuous_scale='Reds')
-                    fig_sai.update_traces(textposition='inside', textfont=dict(size=14, color='white'))
-                    fig_sai.update_layout(height=400)
-                    st.plotly_chart(fig_sai, use_container_width=True)
+                    fig_sai = px.bar(df_sai_g, x=col_agrup, y='QTD', text='TEXTO', title=f"SAIDAS {id_filtro} POR {periodo_hist}")
+                    st.plotly_chart(fig_sai, use_container_width=True, key=f"hist_sai_{id_filtro}_{periodo_hist}_{local_filtro}")
                 st.dataframe(df_sai_g, use_container_width=True)
-                st.write(f"Detalhado SAIDAS {id_filtro}")
                 st.dataframe(df_sai.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=250)
 
-            # TABELA GERAL AGRUPADA
             st.divider()
-            st.subheader(f"📊 TABELA AGRUPADA POR {periodo_hist} - ID {id_filtro} - TIPO {tipo_filtro_hist} - LOCAL {local_filtro}")
+            st.subheader(f"📊 TABELA AGRUPADA POR {periodo_hist} - ID {id_filtro} - TIPO {tipo_filtro_hist}")
             df_tabela = df_filtrado.groupby([col_agrup,'ID','TIPO','LOCAL_MOV'], as_index=False)['QTD'].sum()
             st.dataframe(df_tabela.sort_values(by=col_agrup, ascending=False), use_container_width=True, height=300)
 
-            # HISTORICO DETALHADO COMPLETO FILTRADO
-            st.subheader(f"📜 HISTORICO DETALHADO - ID {id_filtro} - {tipo_filtro_hist} - {local_filtro}")
+            st.subheader(f"📜 HISTORICO DETALHADO - ID {id_filtro} - {tipo_filtro_hist}")
             st.dataframe(df_filtrado.sort_values(by='DATA_DT', ascending=False), use_container_width=True, height=400)
 
-            # GRAFICO POR LOCAL SE TODOS
-            if local_filtro=="TODOS":
-                df_local = df_filtrado.groupby(['LOCAL_MOV','TIPO'], as_index=False)['QTD'].sum()
-                if not df_local.empty:
-                    fig_local = px.bar(df_local, x='LOCAL_MOV', y='QTD', color='TIPO', barmode='group', title=f"POR LOCAL - ID {id_filtro} - {tipo_filtro_hist}")
-                    st.plotly_chart(fig_local, use_container_width=True)
-
-            # GRAFICO POR ID SE TODOS
-            if id_filtro=="TODOS":
-                df_id_g = df_filtrado.groupby(['ID','TIPO'], as_index=False)['QTD'].sum()
-                df_top_ids = df_id_g.groupby('ID', as_index=False)['QTD'].sum().sort_values(by='QTD', ascending=False).head(10)
-                df_top_ids['TEXTO']=df_top_ids['QTD'].apply(lambda x: f"{x:,.0f}")
-                fig_ids = px.bar(df_top_ids, x='ID', y='QTD', text='TEXTO', color='ID', title=f"TOP 10 IDS - {tipo_filtro_hist} - POR {periodo_hist}")
-                fig_ids.update_traces(textposition='inside', textfont=dict(size=14, color='white'))
-                st.plotly_chart(fig_ids, use_container_width=True)
-
-st.caption(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M:%S')} - HISTORICO COM FILTRO ID INDIVIDUAL/TODOS + ENTRADA/SAIDA + DIA/SEMANA/MES/ANO")
+st.caption(f"REFORMA DE FORNOS - {agora.strftime('%d/%m/%Y %H:%M:%S')} - FIX DUPLICATE ID - keys unicas em todos graficos")
