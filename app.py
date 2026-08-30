@@ -314,7 +314,8 @@ if "GRAFICO POS 1" in tab_dict:
                     fig_all.update_traces(textposition='outside', texttemplate='%{text}', textfont=dict(size=12), hovertemplate='%{y}<br>SALDO TOTAL: %{x:,.0f}<extra></extra>')
                     fig_all.update_layout(height=400+len(df_all)*40, xaxis_title="SALDO TOTAL - NÚMEROS", yaxis={'categoryorder':'array', 'categoryarray': df_all['LABEL'][::-1].tolist()})
                     st.plotly_chart(fig_all, use_container_width=True)
-                    st.dataframe(df_all[['ID','DESCRICAO','MARCA','LOTE','SALDO']].sort_values('ID_NUM'), use_container_width=True, hide_index=True)
+                    # CORRIGIDO AQUI - ORDENA ANTES DE SELECIONAR COLUNAS
+                    st.dataframe(df_all.sort_values('ID_NUM')[['ID','DESCRICAO','MARCA','LOTE','SALDO']], use_container_width=True, hide_index=True)
 
                     st.divider()
                     st.markdown("#### 📦 TODAS POSIÇÕES - SALDO TOTAL EM NÚMEROS")
@@ -360,4 +361,4 @@ if "USUARIOS" in tab_dict:
                     df_emails=df_emails[df_emails["EMAIL"].str.lower()!=str(row_u.get('EMAIL','')).lower()]
                     df_emails.to_csv(ARQ_EMAILS,index=False,encoding='utf-8'); st.rerun()
 
-st.caption(f"{agora.strftime('%d/%m/%Y %H:%M:%S')} | REFORMA DE FORNOS - SALDO TOTAL EM NÚMEROS")
+st.caption(f"{agora.strftime('%d/%m/%Y %H:%M:%S')} | REFORMA DE FORNOS - SALDO TOTAL EM NÚMEROS - SEM KeyError")
