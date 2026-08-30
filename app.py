@@ -15,6 +15,10 @@ def sf(v,d=0.0):
     try: return float(str(v).replace(",",".")) if str(v).strip()!="" else float(d)
     except: return float(d)
 
+def sort_id_num(id_str):
+    try: return int(str(id_str).strip())
+    except: return 999999
+
 def carregar(p):
     if not os.path.exists(p): return []
     try: df=pd.read_csv(p,dtype=str,encoding='utf-8').fillna("")
@@ -39,8 +43,8 @@ def carregar_emails():
         df.loc[mask_admin, "SENHA"]="admin"
         df.loc[mask_admin, "ADMIN"]="SIM"
     else:
-        novo_admin=pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin","NOME":"ADMIN","STATUS":"LIBERADO","CADASTRO":"SIM","ENTRADA":"SIM","SAIDA":"SIM","ESTOQUE":"SIM","GRAFICO":"SIM","HISTORICO":"SIM","ADMIN":"SIM"}])
-        df=pd.concat([df,novo_admin],ignore_index=True)
+        novo=pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin","NOME":"ADMIN","STATUS":"LIBERADO","CADASTRO":"SIM","ENTRADA":"SIM","SAIDA":"SIM","ESTOQUE":"SIM","GRAFICO":"SIM","HISTORICO":"SIM","ADMIN":"SIM"}])
+        df=pd.concat([df,novo],ignore_index=True)
     df.to_csv(ARQ_EMAILS,index=False,encoding='utf-8')
     return df
 
@@ -127,7 +131,6 @@ for id_ in set([s['ID'] for s in saldos_geral.values()]):
         reorganiza_fifo_pos1(id_)
 
 st.sidebar.markdown("### REFORMA DE FORNOS")
-st.sidebar.markdown("**MATERIAIS REFRATARIOS**")
 st.sidebar.write(f"👤 {user.get('NOME')}")
 if st.sidebar.button("Sair"): salvar(); st.session_state.log=False; st.session_state.user=None; st.rerun()
 
@@ -144,7 +147,7 @@ tab_dict={nome: tab for nome, tab in zip(abas_disponiveis, tabs)}
 
 if "CADASTRO" in tab_dict:
     with tab_dict["CADASTRO"]:
-        st.subheader("CADASTRO - COM EXCLUIR")
+        st.subheader("CADASTRO")
         id_in=st.text_input("ID", key="id_cad")
         with st.form("form_cad"):
             c1,c2=st.columns([1,3])
@@ -164,17 +167,17 @@ if "CADASTRO" in tab_dict:
                             max_pos=max(max_pos, int(sf(m.get('ORDEM',0),0)))
                     nova_pos=max_pos+1 if max_pos>0 else 1
                     st.session_state.cad.append({"ID":id_f.upper().strip(),"POSICAO":nova_pos,"ORDEM":nova_pos,"DESCRICAO":desc.upper(),"MARCA":marca.upper() or "SEM MARCA","QTD_POR_EMBALAGEM":qtd,"LOTE":""})
-                    salvar(); st.success(f"POS {nova_pos}"); st.rerun()
+                    salvar(); st.rerun()
         if st.session_state.cad:
             df=pd.DataFrame(st.session_state.cad)
-            df['POSICAO']=df['POSICAO'].apply(lambda x: int(sf(x,1)))
-            df=df.sort_values(['ID','POSICAO']).reset_index(drop=True)
+            df['ID_NUM']=df['ID'].apply(sort_id_num)
+            df=df.sort_values(['ID_NUM','POSICAO']).drop(columns=['ID_NUM']).reset_index(drop=True)
             st.dataframe(df, use_container_width=True, height=250)
             st.markdown("#### 🗑️ EXCLUIR CADASTRO")
             for i_row, row in df.iterrows():
                 c1,c2,c3,c4,c5,c6 = st.columns([0.8,1,3,1.5,1,0.8])
-                c1.write(f"POS {row.get('POSICAO',1)}"); c2.write(f"{row.get('ID','')}"); c3.write(f"{row.get('DESCRICAO','')}"); c4.write(f"{row.get('MARCA','')}"); c5.write(f"{row.get('QTD_POR_EMBALAGEM','')}")
-                if c6.button("🗑️", key=f"del_cad_{i_row}_{row.get('ID')}_{row.get('POSICAO')}_{i_row}"):
+                c1.write(f"POS {row.get('POSICAO',1)}"); c2.write(f"ID {row.get('ID','')}"); c3.write(f"{row.get('DESCRICAO','')}"); c4.write(f"{row.get('MARCA','')}"); c5.write(f"{row.get('QTD_POR_EMBALAGEM','')}")
+                if c6.button("🗑️", key=f"del_cad_{i_row}_cad_{row.get('ID')}_{i_row}"):
                     id_remove=str(row.get('ID','')).upper(); desc_remove=str(row.get('DESCRICAO','')).upper(); pos_remove=int(sf(row.get('POSICAO',0)))
                     for j in range(len(st.session_state.cad)-1,-1,-1):
                         rj=st.session_state.cad[j]
@@ -191,30 +194,28 @@ if "ENTRADA / SAIDA FIFO" in tab_dict:
             saldos = get_saldos_ordinal()
             lotes_com_saldo = sorted([s for s in saldos.values() if s['ID']==id_mov and s['SALDO']>0], key=lambda x: x['ORDEM'])
             if lotes_com_saldo:
-                st.markdown(f"### FILA ID {id_mov}")
+                st.markdown(f"### ID {id_mov} - {lotes_com_saldo[0]['DESCRICAO']}")
                 for idx_s, s in enumerate(lotes_com_saldo):
                     c1,c2,c3 = st.columns([4,1,0.6])
-                    if s['ORDEM']==1: c1.success(f"⭐ POS {s['ORDEM']} - LOTE {s['LOTE']} - {s['SALDO']:,.0f}")
-                    else: c1.write(f"POS {s['ORDEM']} - LOTE {s['LOTE']} - {s['SALDO']:,.0f}")
-                    c2.write(f"{s['DESCRICAO'][:20]}")
-                    if c3.button("🗑️", key=f"del_fila_{id_mov}_{s['LOTE']}_{idx_s}_{s['ORDEM']}_{idx_s}"):
+                    if s['ORDEM']==1: c1.success(f"⭐ POS {s['ORDEM']} - LOTE {s['LOTE']} - {s['DESCRICAO']} - {s['SALDO']:,.0f}")
+                    else: c1.write(f"POS {s['ORDEM']} - LOTE {s['LOTE']} - {s['DESCRICAO']} - {s['SALDO']:,.0f}")
+                    c2.write(f"{s['MARCA'][:15]}")
+                    if c3.button("🗑️", key=f"del_fila_{id_mov}_{s['LOTE']}_{idx_s}_{idx_s}_fila"):
                         st.session_state.mov = [m for m in st.session_state.mov if not (str(m.get('ID','')).upper()==s['ID'] and str(m.get('LOTE','')).upper()==s['LOTE'])]
                         salvar(); reorganiza_fifo_pos1(id_mov); st.rerun()
                 if tem_permissao("SAIDA"):
                     pos1 = [s for s in lotes_com_saldo if s['ORDEM']==1]
                     if pos1:
                         lote_pos1=pos1[0]
-                        qtd_s=st.number_input(f"SAIDA POS 1 LOTE {lote_pos1['LOTE']}", min_value=0.0, value=0.0, step=1.0, key="qs")
+                        qtd_s=st.number_input(f"SAIDA POS 1 LOTE {lote_pos1['LOTE']} - {lote_pos1['DESCRICAO']}", min_value=0.0, value=0.0, step=1.0, key="qs")
                         if qtd_s>0:
                             tot = qtd_s * lote_pos1['QTD_EMB']
-                            if tot > lote_pos1['SALDO']: st.error(f"Saldo insuficiente! Tem {lote_pos1['SALDO']:,.0f}")
-                            else:
-                                if st.button(f"SAIDA POS 1 {tot:,.0f}", type="primary", use_container_width=True):
-                                    agora_str=datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
-                                    st.session_state.mov.append({"ID":id_mov,"DESCRICAO":lote_pos1['DESCRICAO'],"POSICAO":1,"ORDEM":1,"LOTE":lote_pos1['LOTE'],"MARCA":lote_pos1['MARCA'],"PALETES":qtd_s,"TOTAL_QTD":tot,"DATA_HORA":agora_str,"TIPO":"SAIDA","QTD_POR_EMBALAGEM":lote_pos1['QTD_EMB']})
-                                    salvar()
-                                    if lote_pos1['SALDO']-tot<=0: reorganiza_fifo_pos1(id_mov)
-                                    st.rerun()
+                            if st.button(f"SAIDA POS 1 {tot:,.0f}", type="primary", use_container_width=True):
+                                agora_str=datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
+                                st.session_state.mov.append({"ID":id_mov,"DESCRICAO":lote_pos1['DESCRICAO'],"POSICAO":1,"ORDEM":1,"LOTE":lote_pos1['LOTE'],"MARCA":lote_pos1['MARCA'],"PALETES":qtd_s,"TOTAL_QTD":tot,"DATA_HORA":agora_str,"TIPO":"SAIDA","QTD_POR_EMBALAGEM":lote_pos1['QTD_EMB']})
+                                salvar()
+                                if lote_pos1['SALDO']-tot<=0: reorganiza_fifo_pos1(id_mov)
+                                st.rerun()
             if tem_permissao("ENTRADA"):
                 st.divider()
                 cad_id = [r for r in st.session_state.cad if str(r.get('ID','')).upper()==id_mov]
@@ -238,91 +239,125 @@ if "ENTRADA / SAIDA FIFO" in tab_dict:
 
 if "ESTOQUE" in tab_dict:
     with tab_dict["ESTOQUE"]:
-        st.subheader("ESTOQUE - COM EXCLUIR LOTE")
+        st.subheader("ESTOQUE")
         saldos = get_saldos_ordinal()
         lista=[v for v in saldos.values() if v['SALDO']>0]
         if lista:
-            df=pd.DataFrame(lista).sort_values(['ID','ORDEM']).reset_index(drop=True)
+            df=pd.DataFrame(lista)
+            df['ID_NUM']=df['ID'].apply(sort_id_num)
+            df=df.sort_values(['ID_NUM','ORDEM']).drop(columns=['ID_NUM']).reset_index(drop=True)
             st.dataframe(df[['ORDEM','ID','LOTE','DESCRICAO','SALDO']], use_container_width=True, height=300)
             st.markdown("#### 🗑️ EXCLUIR LOTE")
-            for idx_est, s in enumerate(sorted(lista, key=lambda x: (x['ID'], x['ORDEM']))):
+            for idx_est, s in enumerate(df.to_dict('records')):
                 c1,c2,c3,c4,c5 = st.columns([0.6,0.8,1.2,3,0.6])
                 c1.write(f"POS {s['ORDEM']}"); c2.write(f"ID {s['ID']}"); c3.write(f"LOTE {s['LOTE']}"); c4.write(f"{s['DESCRICAO']} - {s['SALDO']:,.0f}")
-                if c5.button("🗑️", key=f"del_est_{idx_est}_{s['ID']}_{s['LOTE']}_{s['ORDEM']}_{idx_est}_unique"):
+                if c5.button("🗑️", key=f"del_est_{idx_est}_{s['ID']}_{s['LOTE']}_{idx_est}"):
                     st.session_state.mov = [m for m in st.session_state.mov if not (str(m.get('ID','')).upper()==s['ID'] and str(m.get('LOTE','')).upper()==s['LOTE'])]
                     salvar(); reorganiza_fifo_pos1(s['ID']); st.rerun()
 
 if "GRAFICO POS 1" in tab_dict:
     with tab_dict["GRAFICO POS 1"]:
-        st.subheader("📊 GRAFICO - 1-ID / 2-TODOS")
+        st.subheader("📊 GRAFICO POSIÇÃO DOS MATERIAIS - SALDO EM NÚMEROS")
         opcao_graf = st.radio("SELEÇÃO:", ["1 - ID", "2 - TODOS"], horizontal=True, key="op_graf")
         saldos = get_saldos_ordinal()
         lista=[v for v in saldos.values() if v['SALDO']>0]
-        if not lista: st.info("Sem estoque")
+        if not lista:
+            st.info("Sem estoque")
         else:
             if opcao_graf == "1 - ID":
-                id_graf=st.text_input("DIGITE A ID", key="id_graf")
+                id_graf=st.text_input("DIGITE A ID", key="id_graf", placeholder="Ex: 1")
                 if id_graf:
                     id_graf=id_graf.upper().strip()
                     lotes_id = sorted([s for s in lista if s['ID']==id_graf], key=lambda x: x['ORDEM'])
-                    if lotes_id:
+                    if not lotes_id:
+                        st.error(f"ID {id_graf} sem estoque")
+                    else:
                         pos1=lotes_id[0]
-                        df_pos1=pd.DataFrame([pos1]); df_pos1['TEXTO']=f"LOTE {pos1['LOTE']} {pos1['SALDO']:,.0f}"; df_pos1['LABEL']=f"ID {id_graf}"
-                        fig=px.bar(df_pos1, x='SALDO', y='LABEL', color='LOTE', text='TEXTO', orientation='h'); st.plotly_chart(fig, use_container_width=True)
-                        df_fila=pd.DataFrame(lotes_id); df_fila['LABEL']=df_fila.apply(lambda r: f"POS {r['ORDEM']} LOTE {r['LOTE']}", axis=1); df_fila['TEXTO']=df_fila.apply(lambda r: f"{r['SALDO']:,.0f}", axis=1)
-                        fig2=px.bar(df_fila, x='SALDO', y='LABEL', color='LABEL', text='TEXTO', orientation='h'); st.plotly_chart(fig2, use_container_width=True)
+                        st.markdown(f"### ID {id_graf} - {pos1['DESCRICAO']} - MARCA {pos1['MARCA']}")
+                        st.markdown(f"## ⭐ POS 1 - LOTE {pos1['LOTE']} - SALDO TOTAL {pos1['SALDO']:,.0f}")
+                        df_pos1=pd.DataFrame([pos1])
+                        df_pos1['LABEL']=f"ID {pos1['ID']} - {pos1['DESCRICAO']} - POS 1"
+                        df_pos1['TEXTO']=df_pos1['SALDO'].apply(lambda x: f"{x:,.0f}")
+                        fig=px.bar(df_pos1, x='SALDO', y='LABEL', color='LOTE', text='TEXTO', orientation='h', title=f"ID {id_graf} - {pos1['DESCRICAO']} - SALDO TOTAL")
+                        fig.update_traces(textposition='outside', texttemplate='%{text}', textfont=dict(size=16), hovertemplate='ID: %{y}<br>SALDO TOTAL: %{x:,.0f}<extra></extra>')
+                        fig.update_layout(height=300, xaxis_title="SALDO TOTAL EM UNIDADES - NÚMEROS")
+                        st.plotly_chart(fig, use_container_width=True)
+                        st.divider()
+                        df_fila=pd.DataFrame(lotes_id)
+                        df_fila['LABEL']=df_fila.apply(lambda r: f"POS {r['ORDEM']} - ID {r['ID']} - {r['DESCRICAO'][:30]} - LOTE {r['LOTE']}", axis=1)
+                        df_fila['TEXTO']=df_fila['SALDO'].apply(lambda x: f"{x:,.0f}")
+                        df_fila['COR']=df_fila.apply(lambda r: "⭐ POS 1 - USAR AGORA" if r['ORDEM']==1 else f"POS {r['ORDEM']}", axis=1)
+                        fig2=px.bar(df_fila, x='SALDO', y='LABEL', color='COR', text='TEXTO', orientation='h', title=f"ID {id_graf} - {pos1['DESCRICAO']} - SALDO TOTAL POR POSIÇÃO - NÚMEROS", color_discrete_map={"⭐ POS 1 - USAR AGORA":"green"})
+                        fig2.update_traces(textposition='outside', texttemplate='%{text}', hovertemplate='%{y}<br>SALDO: %{x:,.0f}<extra></extra>')
+                        fig2.update_layout(height=350+len(df_fila)*35, xaxis_title="SALDO TOTAL - NÚMEROS")
+                        st.plotly_chart(fig2, use_container_width=True)
             else:
-                pos1_todos=[]; filas_todas=[]
-                for id_ in sorted(set([s['ID'] for s in lista])):
+                ids_unicos = sorted(set([s['ID'] for s in lista]), key=lambda x: sort_id_num(x))
+                pos1_todos=[]
+                filas_todas=[]
+                for id_ in ids_unicos:
                     lotes_id = sorted([s for s in lista if s['ID']==id_], key=lambda x: x['ORDEM'])
                     if lotes_id:
                         pos1_todos.append(lotes_id[0])
                         filas_todas.extend(lotes_id)
+                pos1_todos = sorted(pos1_todos, key=lambda x: sort_id_num(x['ID']))
+                filas_todas = sorted(filas_todas, key=lambda x: (sort_id_num(x['ID']), x['ORDEM']))
+
                 if pos1_todos:
-                    df_all=pd.DataFrame(pos1_todos); df_all['LABEL']=df_all.apply(lambda r: f"ID {r['ID']} LOTE {r['LOTE']}", axis=1); df_all['TEXTO']=df_all.apply(lambda r: f"{r['SALDO']:,.0f}", axis=1)
-                    fig_all=px.bar(df_all, x='SALDO', y='LABEL', color='ID', text='TEXTO', orientation='h', title="POS 1 TODOS IDS"); st.plotly_chart(fig_all, use_container_width=True)
+                    st.markdown("#### ⭐ POS 1 DE TODOS - SALDO TOTAL EM NÚMEROS - ORDEM 1,2,3...")
+                    df_all=pd.DataFrame(pos1_todos)
+                    df_all['ID_NUM']=df_all['ID'].apply(sort_id_num)
+                    df_all=df_all.sort_values('ID_NUM')
+                    df_all['LABEL']=df_all.apply(lambda r: f"ID {r['ID']} - {r['DESCRICAO'][:35]} - LOTE {r['LOTE']}", axis=1)
+                    df_all['TEXTO']=df_all['SALDO'].apply(lambda x: f"{x:,.0f}")
+                    fig_all=px.bar(df_all, x='SALDO', y='LABEL', color='ID', text='TEXTO', orientation='h', title="TODOS MATERIAIS - POS 1 - SALDO TOTAL EM NÚMEROS")
+                    fig_all.update_traces(textposition='outside', texttemplate='%{text}', textfont=dict(size=12), hovertemplate='%{y}<br>SALDO TOTAL: %{x:,.0f}<extra></extra>')
+                    fig_all.update_layout(height=400+len(df_all)*40, xaxis_title="SALDO TOTAL - NÚMEROS", yaxis={'categoryorder':'array', 'categoryarray': df_all['LABEL'][::-1].tolist()})
+                    st.plotly_chart(fig_all, use_container_width=True)
+                    st.dataframe(df_all[['ID','DESCRICAO','MARCA','LOTE','SALDO']].sort_values('ID_NUM'), use_container_width=True, hide_index=True)
+
+                    st.divider()
+                    st.markdown("#### 📦 TODAS POSIÇÕES - SALDO TOTAL EM NÚMEROS")
+                    df_todas=pd.DataFrame(filas_todas)
+                    df_todas['ID_NUM']=df_todas['ID'].apply(sort_id_num)
+                    df_todas=df_todas.sort_values(['ID_NUM','ORDEM'])
+                    df_todas['LABEL']=df_todas.apply(lambda r: f"ID {r['ID']} POS {r['ORDEM']} - {r['DESCRICAO'][:25]} LOTE {r['LOTE']}", axis=1)
+                    df_todas['TEXTO']=df_todas['SALDO'].apply(lambda x: f"{x:,.0f}")
+                    fig_todas=px.bar(df_todas, x='SALDO', y='LABEL', color='ID', text='TEXTO', orientation='h', title="TODOS IDS - SALDO TOTAL POR POSIÇÃO - NÚMEROS")
+                    fig_todas.update_traces(textposition='outside', texttemplate='%{text}', hovertemplate='%{y}<br>SALDO: %{x:,.0f}<extra></extra>')
+                    fig_todas.update_layout(height=600+len(df_todas)*25, xaxis_title="SALDO TOTAL EM UNIDADES - NÚMEROS")
+                    st.plotly_chart(fig_todas, use_container_width=True)
 
 if "HISTORICO" in tab_dict:
     with tab_dict["HISTORICO"]:
-        st.subheader("HISTORICO - COM EXCLUIR")
+        st.subheader("HISTORICO")
         if st.session_state.mov:
-            df_hist=pd.DataFrame(st.session_state.mov).sort_values('DATA_HORA', ascending=False).reset_index(drop=True)
-            st.dataframe(df_hist, use_container_width=True, height=300)
+            df_hist=pd.DataFrame(st.session_state.mov)
+            df_hist['ID_NUM']=df_hist['ID'].apply(sort_id_num)
+            df_hist=df_hist.sort_values(['DATA_HORA'], ascending=False).reset_index(drop=True)
+            st.dataframe(df_hist.drop(columns=['ID_NUM']), use_container_width=True, height=300)
             st.markdown("#### 🗑️ EXCLUIR MOVIMENTAÇÃO")
             for idx_h, row in df_hist.iterrows():
                 c1,c2,c3,c4,c5,c6,c7 = st.columns([1,0.8,1,1,1,1.2,0.6])
-                c1.write(f"{row.get('DATA_HORA','')[:16]}"); c2.write(f"{row.get('TIPO','')}"); c3.write(f"ID {row.get('ID','')}"); c4.write(f"LOTE {row.get('LOTE','')}"); c5.write(f"{row.get('PALETES','')} pal"); c6.write(f"{row.get('TOTAL_QTD','')}")
-                if c7.button("🗑️", key=f"del_hist_{idx_h}_{row.get('ID')}_{row.get('LOTE')}_{idx_h}_h"):
+                c1.write(f"{row.get('DATA_HORA','')[:16]}"); c2.write(f"{row.get('TIPO','')}"); c3.write(f"ID {row.get('ID','')}"); c4.write(f"LOTE {row.get('LOTE','')}"); c5.write(f"{row.get('DESCRICAO','')[:15]}"); c6.write(f"{row.get('TOTAL_QTD','')}")
+                if c7.button("🗑️", key=f"del_hist_{idx_h}_{row.get('ID')}_{idx_h}_hist"):
                     for j in range(len(st.session_state.mov)-1,-1,-1):
                         mj=st.session_state.mov[j]
-                        if str(mj.get('DATA_HORA',''))==str(row.get('DATA_HORA','')) and str(mj.get('ID',''))==str(row.get('ID','')) and str(mj.get('LOTE',''))==str(row.get('LOTE','')) and str(mj.get('TIPO',''))==str(row.get('TIPO','')):
+                        if str(mj.get('DATA_HORA',''))==str(row.get('DATA_HORA','')) and str(mj.get('ID',''))==str(row.get('ID','')) and str(mj.get('LOTE',''))==str(row.get('LOTE','')):
                             st.session_state.mov.pop(j); break
                     salvar(); reorganiza_fifo_pos1(str(row.get('ID','')).upper()); st.rerun()
 
 if "USUARIOS" in tab_dict:
     with tab_dict["USUARIOS"]:
-        st.subheader("USUARIOS - COM EXCLUIR")
+        st.subheader("USUARIOS")
         df_emails=carregar_emails()
         st.dataframe(df_emails, use_container_width=True, height=250)
         for idx_u, row_u in df_emails.iterrows():
             c1,c2,c3,c4 = st.columns([3,2,1,0.6])
             c1.write(f"{row_u.get('EMAIL','')}"); c2.write(f"{row_u.get('NOME','')}"); c3.write(f"{row_u.get('STATUS','')}")
             if str(row_u.get('EMAIL','')).lower()!="admin@admin.com":
-                if c4.button("🗑️", key=f"del_user_{idx_u}_{row_u.get('EMAIL')}_{idx_u}"):
+                if c4.button("🗑️", key=f"del_user_{idx_u}_{row_u.get('EMAIL')}_{idx_u}_user"):
                     df_emails=df_emails[df_emails["EMAIL"].str.lower()!=str(row_u.get('EMAIL','')).lower()]
                     df_emails.to_csv(ARQ_EMAILS,index=False,encoding='utf-8'); st.rerun()
-        st.divider()
-        with st.form("form_user"):
-            c1,c2,c3=st.columns(3)
-            with c1: email_novo=st.text_input("Email")
-            with c2: senha_novo=st.text_input("Senha")
-            with c3: nome_novo=st.text_input("Nome")
-            status_novo=st.selectbox("STATUS", ["LIBERADO","BLOQUEADO"])
-            if st.form_submit_button("💾 SALVAR", type="primary"):
-                if email_novo and senha_novo:
-                    df_emails=df_emails[df_emails["EMAIL"].str.lower()!=email_novo.lower().strip()]
-                    novo=pd.DataFrame([{"EMAIL":email_novo.lower().strip(),"SENHA":senha_novo,"NOME":nome_novo.upper(),"STATUS":status_novo,"CADASTRO":"SIM","ENTRADA":"SIM","SAIDA":"SIM","ESTOQUE":"SIM","GRAFICO":"SIM","HISTORICO":"SIM","ADMIN":"NAO"}])
-                    df_emails=pd.concat([df_emails,novo],ignore_index=True)
-                    df_emails.to_csv(ARQ_EMAILS,index=False,encoding='utf-8'); st.rerun()
 
-st.caption(f"{agora.strftime('%d/%m/%Y %H:%M:%S')} | REFORMA DE FORNOS - MATERIAIS REFRATARIOS")
+st.caption(f"{agora.strftime('%d/%m/%Y %H:%M:%S')} | REFORMA DE FORNOS - SALDO TOTAL EM NÚMEROS")
