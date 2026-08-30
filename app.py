@@ -191,7 +191,7 @@ with tab_est:
         st.dataframe(pd.DataFrame(lista), use_container_width=True, height=500)
 
 with tab_graf:
-    st.subheader("GRAFICO HORIZONTAL - NUMEROS VISIVEIS")
+    st.subheader("GRAFICO HORIZONTAL - NUMEROS VISIVEIS - QTD + VALIDADE")
     saldos,_=get_saldos()
     lista=[v for v in saldos.values() if v['SALDO']>0]
     if not lista:
@@ -205,47 +205,32 @@ with tab_graf:
 
         if id_sel:
             df_id=df_g[df_g['ID']==id_sel].copy()
-            total_id=df_id['SALDO'].sum()
+            total_id=float(df_id['SALDO'].sum())
             desc_id=df_id['DESCRICAO'].iloc[0] if not df_id.empty else ""
 
             st.markdown(f"### ID {id_sel} - {desc_id}")
             for _, r in df_id.iterrows():
                 st.write(f"Marca {r['MARCA']} = {r['SALDO']:,.0f} | Lote {r['LOTE']} | Val {r['DATA_VAL']} | {r['VAL']:.0f} dias")
-            st.markdown(f"**Total ID {id_sel} = {total_id:,.0f}**")
+            st.markdown(f"**Total ID {id_sel} = {total_id:,.0f} - soma todas marcas registradas no ID**")
 
-            # MARCA agrupada - QTD visivel
             df_marca=df_id.groupby(['MARCA'], as_index=False).agg({'SALDO':'sum','FAB':'first','DATA_VAL':'first','VAL':'first','DESCRICAO':'first'})
-            df_marca['TEXTO_VISIVEL']=df_marca['SALDO'].apply(lambda x: f"{x:,.0f}")
+            df_marca['TEXTO']=df_marca['SALDO'].apply(lambda x: f"{x:,.0f}")
 
-            # GRAFICO 1 - HORIZONTAL - NUMEROS VISIVEIS - GRANDE - FORA DA BARRA
             fig=px.bar(
                 df_marca,
                 x='SALDO',
                 y='MARCA',
                 color='MARCA',
-                text='TEXTO_VISIVEL',
+                text='TEXTO',
                 orientation='h',
                 hover_data=['FAB','DATA_VAL','VAL'],
                 title=f"ID {id_sel} - MARCA + QTD VISIVEL + VALIDADE - Total {total_id:,.0f}"
             )
-            fig.update_traces(
-                textposition='outside',
-                textfont=dict(size=18, color='black'),
-                marker=dict(line=dict(width=1, color='black')),
-                cliponaxis=False
-            )
-            fig.update_layout(
-                xaxis_title="QTD",
-                yaxis_title="MARCA",
-                showlegend=False,
-                height=400,
-                uniformtext_minsize=14,
-                uniformtext_mode='show'
-            )
+            fig.update_traces(textposition='outside', textfont=dict(size=18, color='black'), cliponaxis=False)
+            fig.update_layout(xaxis_title="QTD", yaxis_title="MARCA", showlegend=False, height=400)
             st.plotly_chart(fig, use_container_width=True)
 
-            # GRAFICO 2 - HORIZONTAL - TODOS PRODUTOS DA ID - LOTE + QTD VISIVEL + VALIDADE
-            df_id['TEXTO_VISIVEL']=df_id.apply(lambda r: f"{r['SALDO']:,.0f} | Val {r['DATA_VAL']}", axis=1)
+            df_id['TEXTO']=df_id.apply(lambda r: f"{r['SALDO']:,.0f} | Val {r['DATA_VAL']}", axis=1)
             df_id['Y_LABEL']=df_id['MARCA'] + " | Lote " + df_id['LOTE']
 
             fig2=px.bar(
@@ -253,57 +238,45 @@ with tab_graf:
                 x='SALDO',
                 y='Y_LABEL',
                 color='MARCA',
-                text='TEXTO_VISIVEL',
+                text='TEXTO',
                 orientation='h',
                 hover_data=['FAB','DATA_VAL','VAL','LOTE','LOCAL'],
-                title=f"ID {id_sel} - TODOS PRODUTOS + QTD VISIVEL + VALIDADE - Total {total_id:,.0f}"
+                title=f"ID {id_sel} - TODOS PRODUTOS + QTD + VALIDADE - Total {total_id:,.0f}"
             )
-            fig2.update_traces(
-                textposition='outside',
-                textfont=dict(size=14, color='black'),
-                cliponaxis=False
-            )
-            fig2.update_layout(
-                xaxis_title="QTD",
-                yaxis_title="MARCA + LOTE",
-                height=500,
-                uniformtext_minsize=12,
-                uniformtext_mode='show'
-            )
+            fig2.update_traces(textposition='outside', textfont=dict(size=14, color='black'), cliponaxis=False)
+            fig2.update_layout(xaxis_title="QTD", yaxis_title="MARCA + LOTE", height=500)
             st.plotly_chart(fig2, use_container_width=True)
 
-            # GRAFICO 3 - TODOS IDs - HORIZONTAL - NUMEROS VISIVEIS
             df_all=df_g.groupby(['ID','MARCA'], as_index=False)['SALDO'].sum()
-            df_all['TEXTO_VISIVEL']=df_all['SALDO'].apply(lambda x: f"{x:,.0f}")
+            df_all['TEXTO']=df_all['SALDO'].apply(lambda x: f"{x:,.0f}")
 
             fig3=px.bar(
                 df_all,
                 x='SALDO',
                 y='ID',
                 color='MARCA',
-                text='TEXTO_VISIVEL',
+                text='TEXTO',
                 barmode='stack',
                 orientation='h',
                 title="Todos IDs - Horizontal - QTD Visivel - Cor=Marca"
             )
-            fig3.update_traces(
-                textposition='inside',
-                textfont=dict(size=16, color='white'),
-                insidetextanchor='middle',
-                cliponaxis=False
-            )
-            fig3.update_layout(
-                xaxis_title="QTD",
-                yaxis_title="ID",
-                uniformtext_minsize=12,
-                uniformtext_mode='show'
-            )
+            fig3.update_traces(textposition='inside', textfont=dict(size=16, color='white'), cliponaxis=False)
+            fig3.update_layout(xaxis_title="QTD", yaxis_title="ID")
             st.plotly_chart(fig3, use_container_width=True)
 
-            # TABELA COM QTD + VALIDADE
             df_show=df_id[['MARCA','LOTE','SALDO','FAB','DATA_VAL','VAL','LOCAL']].copy()
             df_show.columns=['MARCA','LOTE','QTD','FAB','VALIDADE','DIAS','LOCAL']
-            df_show.loc[len(df_show)]=[f"TOTAL ID {id_sel}", "", total_id, "", "", "", ""]
+
+            linha_total = pd.DataFrame([{
+                'MARCA': f"TOTAL ID {id_sel}",
+                'LOTE': "",
+                'QTD': total_id,
+                'FAB': "",
+                'VALIDADE': "",
+                'DIAS': "",
+                'LOCAL': ""
+            }])
+            df_show = pd.concat([df_show, linha_total], ignore_index=True)
             st.dataframe(df_show, use_container_width=True, hide_index=True)
 
 with tab_hist:
