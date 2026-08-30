@@ -4,7 +4,7 @@ import os
 from datetime import datetime, timezone, timedelta
 import plotly.express as px
 
-st.set_page_config(page_title="FIFO - EXCLUIR EM TUDO", layout="wide")
+st.set_page_config(page_title="REFORMA DE FORNOS - MATERIAIS REFRATARIOS", layout="wide")
 fuso = timezone(timedelta(hours=-3))
 
 ARQ_CAD = "cadastro_refratario.csv"
@@ -35,10 +35,17 @@ def carregar_emails():
     df.columns=[c.upper().strip() for c in df.columns]
     for col in ["EMAIL","SENHA","NOME","STATUS","CADASTRO","ENTRADA","SAIDA","ESTOQUE","GRAFICO","HISTORICO","ADMIN"]:
         if col not in df.columns: df[col]="SIM" if col not in ["EMAIL","SENHA","NOME"] else ""
-    for i in range(len(df)):
-        if str(df.loc[i,"EMAIL"]).lower()=="admin@admin.com":
-            for c in ["STATUS","CADASTRO","ENTRADA","SAIDA","ESTOQUE","GRAFICO","HISTORICO","ADMIN"]:
-                df.loc[i,c]="LIBERADO" if c=="STATUS" else "SIM"
+    # FORÇA ADMIN SEMPRE LIBERADO
+    mask_admin = df["EMAIL"].str.lower()=="admin@admin.com"
+    if mask_admin.any():
+        df.loc[mask_admin, "STATUS"]="LIBERADO"
+        df.loc[mask_admin, "SENHA"]="admin"
+        df.loc[mask_admin, "ADMIN"]="SIM"
+        for c in ["CADASTRO","ENTRADA","SAIDA","ESTOQUE","GRAFICO","HISTORICO"]:
+            df.loc[mask_admin, c]="SIM"
+    else:
+        novo_admin=pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin","NOME":"ADMIN","STATUS":"LIBERADO","CADASTRO":"SIM","ENTRADA":"SIM","SAIDA":"SIM","ESTOQUE":"SIM","GRAFICO":"SIM","HISTORICO":"SIM","ADMIN":"SIM"}])
+        df=pd.concat([df,novo_admin],ignore_index=True)
     df.to_csv(ARQ_EMAILS,index=False,encoding='utf-8')
     return df
 
@@ -98,16 +105,25 @@ if 'log' not in st.session_state: st.session_state.log=False
 if 'user' not in st.session_state: st.session_state.user=None
 
 if not st.session_state.log:
-    st.title("LOGIN - FIFO")
+    st.markdown("<h1 style='text-align:center;'>REFORMA DE FORNOS - MATERIAIS REFRATARIOS</h1>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center;'>CONTROLE FIFO ORDINAL - POS 1</h3>", unsafe_allow_html=True)
     df_emails=carregar_emails()
     e=st.text_input("Email"); s=st.text_input("Senha",type="password")
-    if st.button("Entrar",type="primary"):
-        u=df_emails[(df_emails["EMAIL"].str.lower()==e.lower().strip()) & (df_emails["SENHA"].astype(str)==str(s)) & (df_emails["STATUS"].str.upper()=="LIBERADO")]
+    if st.button("ENTRAR",type="primary", use_container_width=True):
+        e_low=e.lower().strip()
+        # LOGIN ADMIN FORÇADO - SEMPRE LIBERA SE FOR admin@admin.com / admin
+        if e_low=="admin@admin.com" and str(s)=="admin":
+            st.session_state.log=True
+            st.session_state.user={"EMAIL":"admin@admin.com","SENHA":"admin","NOME":"ADMIN","STATUS":"LIBERADO","CADASTRO":"SIM","ENTRADA":"SIM","SAIDA":"SIM","ESTOQUE":"SIM","GRAFICO":"SIM","HISTORICO":"SIM","ADMIN":"SIM"}
+            st.rerun()
+        u=df_emails[(df_emails["EMAIL"].str.lower()==e_low) & (df_emails["SENHA"].astype(str)==str(s)) & (df_emails["STATUS"].str.upper()=="LIBERADO")]
         if not u.empty:
             st.session_state.log=True
             st.session_state.user=u.iloc[0].to_dict()
             st.rerun()
-        else: st.error("Acesso negado")
+        else:
+            st.error("Acesso negado - verifique email/senha ou contate admin@admin.com / admin")
+            st.info(f"Usuarios no arquivo: {df_emails['EMAIL'].tolist()}")
     st.stop()
 
 user=st.session_state.user
@@ -122,6 +138,8 @@ for id_ in set([s['ID'] for s in saldos_geral.values()]):
         if not tem_ordem1:
             reorganiza_fifo_pos1(id_)
 
+st.sidebar.markdown("### REFORMA DE FORNOS")
+st.sidebar.markdown("**MATERIAIS REFRATARIOS**")
 st.sidebar.write(f"👤 {user.get('NOME')} - {user.get('EMAIL')}")
 if str(user.get('EMAIL','')).lower()=="admin@admin.com": st.sidebar.success("👑 ADMIN TOTAL")
 if st.sidebar.button("Sair"): salvar(); st.session_state.log=False; st.session_state.user=None; st.rerun()
@@ -195,12 +213,8 @@ if "ENTRADA / SAIDA FIFO" in tab_dict:
                     else: c1.write(f"POS {s['ORDEM']} - LOTE {s['LOTE']} - {s['SALDO']:,.0f}")
                     c2.write(f"{s['DESCRICAO'][:20]}")
                     if c3.button("🗑️", key=f"del_fila_{s['ID']}_{s['LOTE']}_{s['ORDEM']}"):
-                        # EXCLUI TODA MOVIMENTACAO DESTE LOTE
                         st.session_state.mov = [m for m in st.session_state.mov if not (str(m.get('ID','')).upper()==s['ID'] and str(m.get('LOTE','')).upper()==s['LOTE'])]
-                        salvar()
-                        reorganiza_fifo_pos1(id_mov)
-                        st.success(f"LOTE {s['LOTE']} EXCLUÍDO")
-                        st.rerun()
+                        salvar(); reorganiza_fifo_pos1(id_mov); st.rerun()
                 if tem_permissao("SAIDA"):
                     pos1 = [s for s in lotes_com_saldo if s['ORDEM']==1]
                     if pos1:
@@ -214,8 +228,7 @@ if "ENTRADA / SAIDA FIFO" in tab_dict:
                                     agora_str=datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
                                     st.session_state.mov.append({"ID":id_mov,"DESCRICAO":lote_pos1['DESCRICAO'],"POSICAO":1,"ORDEM":1,"LOTE":lote_pos1['LOTE'],"MARCA":lote_pos1['MARCA'],"PALETES":qtd_s,"TOTAL_QTD":tot,"DATA_HORA":agora_str,"TIPO":"SAIDA","QTD_POR_EMBALAGEM":lote_pos1['QTD_EMB']})
                                     salvar()
-                                    if lote_pos1['SALDO']-tot<=0:
-                                        reorganiza_fifo_pos1(id_mov)
+                                    if lote_pos1['SALDO']-tot<=0: reorganiza_fifo_pos1(id_mov)
                                     st.rerun()
             if tem_permissao("ENTRADA"):
                 st.divider()
@@ -254,14 +267,11 @@ if "ESTOQUE" in tab_dict:
                 c1.write(f"POS {s['ORDEM']}"); c2.write(f"ID {s['ID']}"); c3.write(f"LOTE {s['LOTE']}"); c4.write(f"{s['DESCRICAO']} - {s['SALDO']:,.0f}")
                 if c5.button("🗑️", key=f"del_est_{s['ID']}_{s['LOTE']}_{s['ORDEM']}_est"):
                     st.session_state.mov = [m for m in st.session_state.mov if not (str(m.get('ID','')).upper()==s['ID'] and str(m.get('LOTE','')).upper()==s['LOTE'])]
-                    salvar()
-                    reorganiza_fifo_pos1(s['ID'])
-                    st.success(f"ID {s['ID']} LOTE {s['LOTE']} EXCLUÍDO DO ESTOQUE")
-                    st.rerun()
+                    salvar(); reorganiza_fifo_pos1(s['ID']); st.rerun()
 
 if "GRAFICO POS 1" in tab_dict:
     with tab_dict["GRAFICO POS 1"]:
-        st.subheader("📊 GRAFICO - 1-ID / 2-TODOS")
+        st.subheader("📊 GRAFICO POSIÇÃO DOS MATERIAIS")
         opcao_graf = st.radio("SELEÇÃO:", ["1 - ID", "2 - TODOS"], horizontal=True, key="op_graf")
         saldos = get_saldos_ordinal()
         lista=[v for v in saldos.values() if v['SALDO']>0]
@@ -302,20 +312,16 @@ if "HISTORICO" in tab_dict:
             for idx, row in df_hist.iterrows():
                 c1,c2,c3,c4,c5,c6,c7 = st.columns([1,0.8,1,1,1,1.2,0.6])
                 c1.write(f"{row.get('DATA_HORA','')[:16]}"); c2.write(f"{row.get('TIPO','')}"); c3.write(f"ID {row.get('ID','')}"); c4.write(f"LOTE {row.get('LOTE','')}"); c5.write(f"{row.get('PALETES','')} pal"); c6.write(f"{row.get('TOTAL_QTD','')}")
-                if c7.button("🗑️", key=f"del_hist_{idx}_{row.get('DATA_HORA','')}_{row.get('LOTE','')}"):
-                    # remove pelo indice original
+                if c7.button("🗑️", key=f"del_hist_{idx}_{row.get('DATA_HORA','')}"):
                     for j in range(len(st.session_state.mov)-1,-1,-1):
                         mj=st.session_state.mov[j]
-                        if str(mj.get('DATA_HORA',''))==str(row.get('DATA_HORA','')) and str(mj.get('ID',''))==str(row.get('ID','')) and str(mj.get('LOTE',''))==str(row.get('LOTE','')) and str(mj.get('TIPO',''))==str(row.get('TIPO','')) and str(mj.get('TOTAL_QTD',''))==str(row.get('TOTAL_QTD','')):
+                        if str(mj.get('DATA_HORA',''))==str(row.get('DATA_HORA','')) and str(mj.get('ID',''))==str(row.get('ID','')) and str(mj.get('LOTE',''))==str(row.get('LOTE','')) and str(mj.get('TIPO',''))==str(row.get('TIPO','')):
                             st.session_state.mov.pop(j); break
-                    salvar()
-                    reorganiza_fifo_pos1(str(row.get('ID','')).upper())
-                    st.success("Movimentação excluída")
-                    st.rerun()
+                    salvar(); reorganiza_fifo_pos1(str(row.get('ID','')).upper()); st.rerun()
 
 if "USUARIOS" in tab_dict:
     with tab_dict["USUARIOS"]:
-        st.subheader("👑 USUARIOS - COM EXCLUIR")
+        st.subheader("👑 USUARIOS")
         df_emails=carregar_emails()
         st.dataframe(df_emails, use_container_width=True, height=250)
         st.markdown("#### 🗑️ EXCLUIR USUARIO")
@@ -323,11 +329,9 @@ if "USUARIOS" in tab_dict:
             c1,c2,c3,c4 = st.columns([3,2,1,0.6])
             c1.write(f"{row_u.get('EMAIL','')}"); c2.write(f"{row_u.get('NOME','')}"); c3.write(f"{row_u.get('STATUS','')}")
             if str(row_u.get('EMAIL','')).lower()!="admin@admin.com":
-                if c4.button("🗑️", key=f"del_user_{idx_u}_{row_u.get('EMAIL','')}"):
+                if c4.button("🗑️", key=f"del_user_{idx_u}"):
                     df_emails=df_emails[df_emails["EMAIL"].str.lower()!=str(row_u.get('EMAIL','')).lower()]
-                    df_emails.to_csv(ARQ_EMAILS,index=False,encoding='utf-8')
-                    st.success(f"Usuário {row_u.get('EMAIL','')} excluído")
-                    st.rerun()
+                    df_emails.to_csv(ARQ_EMAILS,index=False,encoding='utf-8'); st.rerun()
             else:
                 c4.write("🔒")
         st.divider()
@@ -353,4 +357,4 @@ if "USUARIOS" in tab_dict:
                     df_emails.to_csv(ARQ_EMAILS,index=False,encoding='utf-8')
                     st.success("Salvo!"); st.rerun()
 
-st.caption(f"{agora.strftime('%d/%m/%Y %H:%M:%S')} | EXCLUIR EM TODAS AS TABELAS - FIFO ORDINAL")
+st.caption(f"{agora.strftime('%d/%m/%Y %H:%M:%S')} | REFORMA DE FORNOS - MATERIAIS REFRATARIOS | FIFO ORDINAL")
