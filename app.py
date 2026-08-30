@@ -92,37 +92,36 @@ agora=datetime.now(fuso)
 st.sidebar.write(f"{st.session_state.user.get('NOME')} | CAD:{len(st.session_state.cad)} MOV:{len(st.session_state.mov)}")
 if st.sidebar.button("Sair"): salvar(); st.session_state.log=False; st.rerun()
 
-tabs=st.tabs(["CADASTRO","ENTRADA / SAIDA","ESTOQUE","GRAFICO","HISTORICO"])
+tabs=st.tabs(["CADASTRO","ENTRADA / SAIDA","ESTOQUE","GRAFICO QTD","HISTORICO"])
 tab_cad, tab_mov, tab_est, tab_graf, tab_hist = tabs
 
 with tab_cad:
     st.subheader("CADASTRO")
-    id_in=st.text_input("ID", placeholder="Ex: 15", key="id_cad_limpo")
-    with st.form("form_cad_limpo"):
+    id_in=st.text_input("ID", placeholder="Ex: 15", key="id_cad")
+    with st.form("form_cad"):
         c1,c2=st.columns([1,3])
-        with c1: id_f=st.text_input("ID", value=id_in.upper() if id_in else "", key="idf_limpo")
-        with c2: desc=st.text_input("DESCRIÇÃO", key="desc_limpo")
+        with c1: id_f=st.text_input("ID", value=id_in.upper() if id_in else "", key="idf")
+        with c2: desc=st.text_input("DESCRIÇÃO", key="desc")
         c3,c4,c5=st.columns(3)
-        with c3: tipo=st.selectbox("EMB", TIPOS, key="tipo_limpo")
-        with c4: qtd=st.number_input("QTD/EMB", min_value=0.1, value=1250.0, key="qtd_limpo")
-        with c5: marca=st.text_input("MARCA", key="marca_limpo")
+        with c3: tipo=st.selectbox("EMB", TIPOS, key="tipo")
+        with c4: qtd=st.number_input("QTD/EMB", min_value=0.1, value=1250.0, key="qtd")
+        with c5: marca=st.text_input("MARCA", key="marca")
         cf1,cf2=st.columns(2)
-        with cf1: data_fab=st.date_input("FABRICAÇÃO", value=date.today(), key="dfab_limpo")
+        with cf1: data_fab=st.date_input("FABRICAÇÃO", value=date.today(), key="dfab")
         with cf2:
-            val_dias=st.number_input("VALIDADE DIAS", min_value=1, max_value=3650, value=30, step=1, key="val_limpo")
+            val_dias=st.number_input("VALIDADE DIAS", min_value=1, max_value=3650, value=30, step=1, key="val")
             data_val=data_fab + timedelta(days=val_dias)
-            st.caption(f"Validade: {data_val.strftime('%d/%m/%Y')}")
+            st.caption(f"{data_val.strftime('%d/%m/%Y')} = {val_dias} dias")
         if st.form_submit_button("CADASTRAR", type="primary", use_container_width=True):
             if id_f and desc:
                 st.session_state.cad.append({"ID":id_f.upper().strip(),"DESCRICAO":desc.upper(),"TIPO_EMBALAGEM":tipo.upper(),"QTD_POR_EMBALAGEM":qtd,"MARCA":marca.upper() if marca else "SEM MARCA","DATA_FABRICACAO":data_fab.strftime("%d/%m/%Y"),"VALIDADE_DIAS":val_dias,"DATA_VALIDADE":data_val.strftime("%d/%m/%Y")})
                 salvar(); st.rerun()
     if st.session_state.cad:
-        df=pd.DataFrame(st.session_state.cad)
-        st.dataframe(df, use_container_width=True, height=250)
+        st.dataframe(pd.DataFrame(st.session_state.cad), use_container_width=True, height=250)
 
 with tab_mov:
     st.subheader("ENTRADA / SAIDA")
-    id_mov=st.text_input("ID", placeholder="Digite ID + ENTER", key="id_mov_limpo")
+    id_mov=st.text_input("ID", placeholder="Digite ID + ENTER", key="id_mov")
     mats=[]
     if id_mov:
         up=id_mov.upper().strip()
@@ -138,46 +137,45 @@ with tab_mov:
     elif mats:
         if len(mats)>1:
             ops=[f"{m['DESCRICAO']} - {m['MARCA']}" for m in mats]
-            sel=st.selectbox("Material", ops, key="selmat_limpo")
+            sel=st.selectbox("Material", ops, key="selmat")
             mat=mats[ops.index(sel)]
         else:
             mat=mats[0]
         saldos,_=get_saldos()
         saldo_id=sum([v['SALDO'] for v in saldos.values() if v['ID']==id_mov.upper()])
-        st.caption(f"{mat['DESCRICAO']} | {mat['TIPO']} {mat['QTD']:,.0f} | Estoque {saldo_id:,.0f} | FAB {mat['FAB']} VAL {mat['VAL']:.0f} dias")
+        st.caption(f"{mat['DESCRICAO']} | {mat['TIPO']} {mat['QTD']:,.0f} | Estoque {saldo_id:,.0f}")
 
-        with st.expander("LOTE / LOCAL / FABRICAÇÃO / VALIDADE", expanded=False):
+        with st.expander("LOTE / LOCAL / FAB / VAL", expanded=False):
             lotes=list(set([v['LOTE'] for v in saldos.values() if v['ID']==id_mov.upper() and v['DESCRICAO']==mat['DESCRICAO'] and v['SALDO']>0]))
             c1,c2,c3,c4=st.columns(4)
             with c1:
                 if lotes:
-                    sel_lote=st.selectbox("LOTE", lotes+["NOVO"], key="lote_limpo")
-                    lote_final=st.text_input("NOVO LOTE", key="lote_novo_limpo") if sel_lote=="NOVO" else sel_lote
+                    sel_lote=st.selectbox("LOTE", lotes+["NOVO"], key="lote")
+                    lote_final=st.text_input("NOVO LOTE", key="lote_novo") if sel_lote=="NOVO" else sel_lote
                 else:
-                    lote_final=st.text_input("LOTE", key="lote2_limpo")
-            with c2: local_final=st.selectbox("LOCAL", LOCAIS, key="local_limpo")
-            with c3: data_fab_mov=st.date_input("FABRICAÇÃO", value=date.today(), key="dfab_mov_limpo")
+                    lote_final=st.text_input("LOTE", key="lote2")
+            with c2: local_final=st.selectbox("LOCAL", LOCAIS, key="local")
+            with c3: data_fab_mov=st.date_input("FAB", value=date.today(), key="dfab_mov")
             with c4:
-                val_mov=st.number_input("VALIDADE DIAS", min_value=1, max_value=3650, value=int(mat['VAL']), key="val_mov_limpo")
+                val_mov=st.number_input("VAL DIAS", min_value=1, max_value=3650, value=int(mat['VAL']), key="val_mov")
                 data_val_mov=data_fab_mov + timedelta(days=val_mov)
 
         col_e,col_s,col_t=st.columns(3)
         with col_e:
-            qtd_e=st.number_input("ENTRADA", min_value=0.0, value=0.0, step=1.0, key="qe_limpo", help=f"QTD {mat['TIPO']} recebida")
+            qtd_e=st.number_input("ENTRADA", min_value=0.0, value=0.0, step=1.0, key="qe")
             tot_e=qtd_e*mat['QTD']
         with col_s:
-            qtd_s=st.number_input("SAIDA", min_value=0.0, value=0.0, step=1.0, key="qs_limpo", help=f"QTD {mat['TIPO']} retirada")
+            qtd_s=st.number_input("SAIDA", min_value=0.0, value=0.0, step=1.0, key="qs")
             tot_s=qtd_s*mat['QTD']
         with col_t:
-            if qtd_e>0: st.metric("TOTAL", f"{saldo_id+tot_e:,.0f}", delta=f"+{tot_e:,.0f}")
-            elif qtd_s>0: st.metric("TOTAL", f"{saldo_id-tot_s:,.0f}", delta=f"-{tot_s:,.0f}", delta_color="inverse")
+            if qtd_e>0: st.metric("TOTAL", f"{saldo_id+tot_e:,.0f}")
+            elif qtd_s>0: st.metric("TOTAL", f"{saldo_id-tot_s:,.0f}")
             else: st.metric("TOTAL", f"{saldo_id:,.0f}")
-            if 'data_val_mov' in locals():
-                st.caption(f"FAB {data_fab_mov.strftime('%d/%m/%Y')} | VAL {data_val_mov.strftime('%d/%m/%Y')} | {val_mov} dias")
+            if 'data_val_mov' in locals(): st.caption(f"{data_fab_mov.strftime('%d/%m/%Y')} -> {data_val_mov.strftime('%d/%m/%Y')} | {val_mov}d")
 
         if qtd_e>0 or qtd_s>0:
             if not lote_final or str(lote_final).strip()=="": st.error("LOTE obrigatório")
-            elif qtd_e>0 and qtd_s>0: st.warning("Só ENTRADA ou SAIDA por vez")
+            elif qtd_e>0 and qtd_s>0: st.warning("Só ENTRADA ou SAIDA")
             elif qtd_e>0:
                 if st.button(f"CONFIRMAR ENTRADA {tot_e:,.0f}", type="primary", use_container_width=True):
                     agora_str=datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
@@ -188,12 +186,6 @@ with tab_mov:
                     agora_str=datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
                     st.session_state.mov.append({"ID":id_mov.upper(),"DESCRICAO":mat['DESCRICAO'],"LOTE":lote_final.upper().strip(),"MARCA":mat['MARCA'],"PALETES":qtd_s,"TOTAL_QTD":tot_s,"DATA":agora_str.split(" ")[0],"DATA_HORA":agora_str,"TIPO_EMBALAGEM":mat['TIPO'],"QTD_POR_EMBALAGEM":mat['QTD'],"LOCAL_MOV":local_final,"TIPO":"SAIDA","DATA_FABRICACAO":data_fab_mov.strftime("%d/%m/%Y"),"DATA_VALIDADE":data_val_mov.strftime("%d/%m/%Y"),"VALIDADE_DIAS":val_mov})
                     salvar(); st.rerun()
-
-    if st.session_state.mov:
-        with st.expander("HISTÓRICO", expanded=False):
-            st.dataframe(pd.DataFrame(st.session_state.mov).tail(10), use_container_width=True)
-            if st.button("APAGAR ÚLTIMO"):
-                if st.session_state.mov: st.session_state.mov.pop(); salvar(); st.rerun()
 
 with tab_est:
     st.subheader("ESTOQUE")
@@ -208,15 +200,77 @@ with tab_est:
         st.metric("TOTAL GERAL", f"{df['SALDO'].sum():,.0f}")
 
 with tab_graf:
-    st.subheader("GRAFICO")
+    st.subheader("GRAFICO - QTD - NAO %")
     saldos,_=get_saldos()
     lista=[v for v in saldos.values() if v['SALDO']>0]
-    if lista:
+    if not lista:
+        st.info("Sem estoque")
+    else:
         df=pd.DataFrame(lista)
-        df_g=df.groupby(['ID','DESCRICAO'],as_index=False)['SALDO'].sum()
-        df_g['TEXTO']=df_g['SALDO'].apply(lambda x: f"{x:,.0f}")
-        fig=px.bar(df_g,x='ID',y='SALDO',color='DESCRICAO',text='TEXTO',barmode='stack')
-        st.plotly_chart(fig,use_container_width=True)
+        # Agrupa por ID + MARCA - QTD absoluta
+        df_g=df.groupby(['ID','DESCRICAO','MARCA','TIPO'], as_index=False)['SALDO'].sum()
+
+        # Texto em QTD absoluta - NAO %
+        df_g['TEXTO_QTD']=df_g.apply(lambda r: f"{r['MARCA']}<br>{r['SALDO']:,.0f}", axis=1)
+        df_g['QTD_LABEL']=df_g['SALDO'].apply(lambda x: f"{x:,.0f}")
+
+        # GRAFICO 1 - COR POR ID - QTD
+        fig1=px.bar(
+            df_g,
+            x='ID',
+            y='SALDO',
+            color='ID',
+            text='QTD_LABEL',
+            hover_data=['DESCRICAO','MARCA','TIPO','SALDO'],
+            title=f"QTD POR ID - COR DIFERENTE POR ID - TOTAL {df_g['SALDO'].sum():,.0f} - {agora.strftime('%d/%m/%Y %H:%M:%S')}"
+        )
+        fig1.update_traces(textposition='outside')
+        fig1.update_layout(yaxis_title="QTD", xaxis_title="ID", showlegend=True)
+        st.plotly_chart(fig1, use_container_width=True)
+
+        # GRAFICO 2 - COR POR MARCA - QTD - BARRAS EMPILHADAS POR ID
+        fig2=px.bar(
+            df_g,
+            x='ID',
+            y='SALDO',
+            color='MARCA',
+            text='TEXTO_QTD',
+            barmode='stack',
+            hover_data=['DESCRICAO','MARCA','SALDO','TIPO'],
+            title=f"QTD POR ID E MARCA - EMPILHADO - MOSTRA MARCA E QTD - TOTAL {df_g['SALDO'].sum():,.0f}"
+        )
+        fig2.update_traces(textposition='inside')
+        fig2.update_layout(yaxis_title="QTD", xaxis_title="ID")
+        st.plotly_chart(fig2, use_container_width=True)
+
+        # GRAFICO 3 - MARCA DETALHADO - QTD
+        fig3=px.bar(
+            df_g,
+            x='MARCA',
+            y='SALDO',
+            color='ID',
+            text='QTD_LABEL',
+            barmode='group',
+            hover_data=['DESCRICAO','ID','SALDO'],
+            title=f"QTD POR MARCA - AGRUPADO POR ID - {df_g['SALDO'].sum():,.0f}"
+        )
+        fig3.update_traces(textposition='outside')
+        fig3.update_layout(yaxis_title="QTD", xaxis_title="MARCA")
+        st.plotly_chart(fig3, use_container_width=True)
+
+        # TABELA - ID + MARCA + QTD + TOTAL
+        st.markdown("ID | MARCA | QTD | TOTAL GERAL")
+        df_tab=df_g[['ID','DESCRICAO','MARCA','TIPO','SALDO']].sort_values(by=['ID','MARCA']).copy()
+
+        # Totais por ID
+        totais_id=df_g.groupby('ID', as_index=False)['SALDO'].sum().rename(columns={'SALDO':'TOTAL_ID'})
+        st.dataframe(df_tab, use_container_width=True)
+        st.dataframe(totais_id, use_container_width=True)
+
+        c1,c2,c3=st.columns(3)
+        with c1: st.metric("TOTAL GERAL QTD", f"{df_g['SALDO'].sum():,.0f}")
+        with c2: st.metric("IDs", f"{df_g['ID'].nunique()}")
+        with c3: st.metric("MARCAS", f"{df_g['MARCA'].nunique()}")
 
 with tab_hist:
     st.subheader("HISTORICO")
