@@ -1,364 +1,255 @@
 import streamlit as st
 import pandas as pd
-import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 import plotly.express as px
 
-st.set_page_config(page_title="REFORMA DE FORNOS - MATERIAIS REFRATARIOS", layout="wide")
-fuso = timezone(timedelta(hours=-3))
+st.set_page_config(page_title="ALMOX - Controle Total", layout="wide", page_icon="📦")
 
-ARQ_CAD = "cadastro_refratario.csv"
-ARQ_MOV = "movimentacao.csv"
-ARQ_EMAILS = "emails.csv"
+# ============= CONEXÃO GOOGLE SHEETS =============
+def conectar_planilha():
+    try:
+        creds_dict = dict(st.secrets["gcp_service_account"])
+        SHEET_ID = st.secrets["SHEET_ID"]
+        scope = ["https://spreadsheets.google.com/feeds","https://www.googleapis.com/auth/drive"]
+        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
+        client = gspread.authorize(creds)
+        return client.open_by_key(SHEET_ID)
+    except Exception as e:
+        st.error(f"Configure Secrets no Streamlit: {e}")
+        return None
 
-def sf(v,d=0.0):
-    try: return float(str(v).replace(",",".")) if str(v).strip()!="" else float(d)
-    except: return float(d)
+def ler_aba(nome_aba):
+    try:
+        sh = conectar_planilha()
+        if sh is None: return pd.DataFrame()
+        ws = sh.worksheet(nome_aba)
+        dados = ws.get_all_records()
+        return pd.DataFrame(dados)
+    except:
+        return pd.DataFrame()
 
-def sort_id_num(id_str):
-    try: return int(str(id_str).strip())
-    except: return 999999
+def escrever_linha(nome_aba, linha_lista):
+    sh = conectar_planilha()
+    ws = sh.worksheet(nome_aba)
+    ws.append_row(linha_lista)
 
-def carregar(p):
-    if not os.path.exists(p): return []
-    try: df=pd.read_csv(p,dtype=str,encoding='utf-8').fillna("")
-    except: df=pd.read_csv(p,dtype=str,encoding='latin-1').fillna("")
-    df.columns=[str(c).upper().strip() for c in df.columns]
-    if 'POSICAO' not in df.columns: df['POSICAO']=range(1,len(df)+1)
-    if 'ORDEM' not in df.columns: df['ORDEM']=df['POSICAO']
-    if 'LOTE' not in df.columns: df['LOTE']=''
-    return df.to_dict('records')
+# ============= LOGIN =============
+if "logado" not in st.session_state:
+    st.session_state.logado = False
 
-def carregar_emails():
-    if not os.path.exists(ARQ_EMAILS):
-        df=pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin","NOME":"ADMIN","STATUS":"LIBERADO","CADASTRO":"SIM","ENTRADA":"SIM","SAIDA":"SIM","ESTOQUE":"SIM","GRAFICO":"SIM","HISTORICO":"SIM","ADMIN":"SIM"}])
-        df.to_csv(ARQ_EMAILS,index=False,encoding='utf-8')
-        return df
-    try: df=pd.read_csv(ARQ_EMAILS,dtype=str,encoding='utf-8').fillna("")
-    except: df=pd.read_csv(ARQ_EMAILS,dtype=str,encoding='latin-1').fillna("")
-    df.columns=[c.upper().strip() for c in df.columns]
-    mask_admin = df["EMAIL"].str.lower()=="admin@admin.com"
-    if mask_admin.any():
-        df.loc[mask_admin, "STATUS"]="LIBERADO"
-        df.loc[mask_admin, "SENHA"]="admin"
-        df.loc[mask_admin, "ADMIN"]="SIM"
-    else:
-        novo=pd.DataFrame([{"EMAIL":"admin@admin.com","SENHA":"admin","NOME":"ADMIN","STATUS":"LIBERADO","CADASTRO":"SIM","ENTRADA":"SIM","SAIDA":"SIM","ESTOQUE":"SIM","GRAFICO":"SIM","HISTORICO":"SIM","ADMIN":"SIM"}])
-        df=pd.concat([df,novo],ignore_index=True)
-    df.to_csv(ARQ_EMAILS,index=False,encoding='utf-8')
-    return df
-
-def salvar():
-    pd.DataFrame(st.session_state.cad).to_csv(ARQ_CAD,index=False,encoding='utf-8')
-    pd.DataFrame(st.session_state.mov).to_csv(ARQ_MOV,index=False,encoding='utf-8')
-
-def get_saldos_ordinal():
-    saldos={}
-    for m in st.session_state.mov:
-        try:
-            idp=str(m.get('ID','')).upper().strip()
-            desc=str(m.get('DESCRICAO','')).upper().strip()
-            lote=str(m.get('LOTE','SEM LOTE')).upper().strip()
-            ordem=int(sf(m.get('ORDEM', m.get('POSICAO',1)),1))
-            if not idp or not lote: continue
-            chave=f"{idp}__{desc}__{lote}__{ordem}"
-            if chave not in saldos:
-                saldos[chave]={'ID':idp,'DESCRICAO':desc,'LOTE':lote,'ORDEM':ordem,'POSICAO':ordem,'MARCA':str(m.get('MARCA','')), 'SALDO':0, 'QTD_EMB':sf(m.get('QTD_POR_EMBALAGEM',1250))}
-            if m.get('TIPO')=="ENTRADA": saldos[chave]['SALDO']+=sf(m.get('TOTAL_QTD',0))
-            else: saldos[chave]['SALDO']-=sf(m.get('TOTAL_QTD',0))
-        except: continue
-    return saldos
-
-def reorganiza_fifo_pos1(id_):
-    saldos = get_saldos_ordinal()
-    lotes_com_saldo = [s for s in saldos.values() if s['ID']==id_ and s['SALDO']>0]
-    lotes_com_saldo = sorted(lotes_com_saldo, key=lambda x: x['ORDEM'])
-    if not lotes_com_saldo: return None
-    if any(s['ORDEM']==1 for s in lotes_com_saldo): return lotes_com_saldo[0]
-    mapa_nova_ordem = {}
-    for idx, lote_info in enumerate(lotes_com_saldo, start=1):
-        mapa_nova_ordem[lote_info['LOTE']] = idx
-    for j in range(len(st.session_state.mov)):
-        if str(st.session_state.mov[j].get('ID','')).upper()==id_:
-            lote_mov=str(st.session_state.mov[j].get('LOTE','')).upper()
-            if lote_mov in mapa_nova_ordem:
-                st.session_state.mov[j]['ORDEM']=mapa_nova_ordem[lote_mov]
-                st.session_state.mov[j]['POSICAO']=mapa_nova_ordem[lote_mov]
-    salvar()
-    lotes_com_saldo = sorted([s for s in get_saldos_ordinal().values() if s['ID']==id_ and s['SALDO']>0], key=lambda x: x['ORDEM'])
-    return lotes_com_saldo[0] if lotes_com_saldo else None
-
-def tem_permissao(func):
-    user = st.session_state.get('user',{})
-    if not user: return False
-    if str(user.get('EMAIL','')).lower()=="admin@admin.com": return True
-    if str(user.get('ADMIN','')).upper()=='SIM': return True
-    return str(user.get(func,'')).upper()=='SIM'
-
-if 'ok' not in st.session_state:
-    st.session_state.cad=carregar(ARQ_CAD)
-    st.session_state.mov=carregar(ARQ_MOV)
-    st.session_state.ok=True
-if 'log' not in st.session_state: st.session_state.log=False
-if 'user' not in st.session_state: st.session_state.user=None
-
-if not st.session_state.log:
-    st.markdown("<h1 style='text-align:center;'>REFORMA DE FORNOS - MATERIAIS REFRATARIOS</h1>", unsafe_allow_html=True)
-    df_emails=carregar_emails()
-    e=st.text_input("Email"); s=st.text_input("Senha",type="password")
-    if st.button("ENTRAR",type="primary", use_container_width=True):
-        e_low=e.lower().strip()
-        if e_low=="admin@admin.com" and str(s)=="admin":
-            st.session_state.log=True
-            st.session_state.user={"EMAIL":"admin@admin.com","SENHA":"admin","NOME":"ADMIN","STATUS":"LIBERADO","CADASTRO":"SIM","ENTRADA":"SIM","SAIDA":"SIM","ESTOQUE":"SIM","GRAFICO":"SIM","HISTORICO":"SIM","ADMIN":"SIM"}
-            st.rerun()
-        u=df_emails[(df_emails["EMAIL"].str.lower()==e_low) & (df_emails["SENHA"].astype(str)==str(s)) & (df_emails["STATUS"].str.upper()=="LIBERADO")]
-        if not u.empty:
-            st.session_state.log=True
-            st.session_state.user=u.iloc[0].to_dict()
-            st.rerun()
-        else: st.error("Acesso negado")
+if not st.session_state.logado:
+    st.title("📦 ALMOX - Login")
+    email = st.text_input("Email")
+    senha = st.text_input("Senha", type="password")
+    if st.button("Entrar", type="primary"):
+        df_users = ler_aba("USUARIOS")
+        if df_users.empty:
+            # primeiro acesso - cria admin padrão
+            if email == "admin@admin.com" and senha == "admin123":
+                st.session_state.logado = True
+                st.session_state.user = email
+                st.rerun()
+            else:
+                st.error("Primeiro acesso use admin@admin.com / admin123")
+        else:
+            df_users["email"] = df_users["email"].astype(str).str.strip()
+            df_users["senha"] = df_users["senha"].astype(str).str.strip()
+            auth = df_users[(df_users["email"]==email) & (df_users["senha"]==senha)]
+            if not auth.empty:
+                st.session_state.logado = True
+                st.session_state.user = email
+                st.rerun()
+            else:
+                st.error("Email ou senha inválidos")
     st.stop()
 
-user=st.session_state.user
-agora=datetime.now(fuso)
+# ============= MENU =============
+st.sidebar.success(f"Logado: {st.session_state.user}")
+menu = st.sidebar.radio("MENU", ["CADASTRO","ENTRADA / SAIDA FIFO","ESTOQUE","GRAFICO POS 1","HISTORICO","USUARIOS"], index=0)
+if st.sidebar.button("Sair"):
+    st.session_state.logado = False
+    st.rerun()
 
-saldos_geral = get_saldos_ordinal()
-for id_ in set([s['ID'] for s in saldos_geral.values()]):
-    lotes_id = [s for s in saldos_geral.values() if s['ID']==id_ and s['SALDO']>0]
-    lotes_id = sorted(lotes_id, key=lambda x: x['ORDEM'])
-    if lotes_id and not any(s['ORDEM']==1 for s in lotes_id):
-        reorganiza_fifo_pos1(id_)
-
-st.sidebar.markdown("### REFORMA DE FORNOS")
-st.sidebar.write(f"👤 {user.get('NOME')}")
-if st.sidebar.button("Sair"): salvar(); st.session_state.log=False; st.session_state.user=None; st.rerun()
-
-abas_disponiveis=[]
-mapa_abas={"CADASTRO":"CADASTRO","ENTRADA / SAIDA FIFO":"ENTRADA","ESTOQUE":"ESTOQUE","GRAFICO POS 1":"GRAFICO","HISTORICO":"HISTORICO","USUARIOS":"ADMIN"}
-for nome_aba, permissao in mapa_abas.items():
-    if nome_aba=="ENTRADA / SAIDA FIFO":
-        if tem_permissao("ENTRADA") or tem_permissao("SAIDA"): abas_disponiveis.append(nome_aba)
-    else:
-        if tem_permissao(permissao): abas_disponiveis.append(nome_aba)
-
-tabs=st.tabs(abas_disponiveis)
-tab_dict={nome: tab for nome, tab in zip(abas_disponiveis, tabs)}
-
-if "CADASTRO" in tab_dict:
-    with tab_dict["CADASTRO"]:
-        st.subheader("CADASTRO")
-        id_in=st.text_input("ID", key="id_cad")
-        with st.form("form_cad"):
-            c1,c2=st.columns([1,3])
-            with c1: id_f=st.text_input("ID", value=id_in.upper() if id_in else "")
-            with c2: desc=st.text_input("DESCRIÇÃO")
-            c3,c4=st.columns(2)
-            with c3: marca=st.text_input("MARCA")
-            with c4: qtd=st.number_input("QTD/EMB", value=1250.0)
-            if st.form_submit_button("CADASTRAR", type="primary", use_container_width=True):
-                if id_f and desc:
-                    max_pos=0
-                    for r in st.session_state.cad:
-                        if str(r.get('ID','')).upper()==id_f.upper().strip():
-                            max_pos=max(max_pos, int(sf(r.get('POSICAO',0),0)))
-                    for m in st.session_state.mov:
-                        if str(m.get('ID','')).upper()==id_f.upper().strip():
-                            max_pos=max(max_pos, int(sf(m.get('ORDEM',0),0)))
-                    nova_pos=max_pos+1 if max_pos>0 else 1
-                    st.session_state.cad.append({"ID":id_f.upper().strip(),"POSICAO":nova_pos,"ORDEM":nova_pos,"DESCRICAO":desc.upper(),"MARCA":marca.upper() or "SEM MARCA","QTD_POR_EMBALAGEM":qtd,"LOTE":""})
-                    salvar(); st.rerun()
-        if st.session_state.cad:
-            df=pd.DataFrame(st.session_state.cad)
-            df['ID_NUM']=df['ID'].apply(sort_id_num)
-            df=df.sort_values(['ID_NUM','POSICAO']).drop(columns=['ID_NUM']).reset_index(drop=True)
-            st.dataframe(df, use_container_width=True, height=250)
-            st.markdown("#### 🗑️ EXCLUIR CADASTRO")
-            for i_row, row in df.iterrows():
-                c1,c2,c3,c4,c5,c6 = st.columns([0.8,1,3,1.5,1,0.8])
-                c1.write(f"POS {row.get('POSICAO',1)}"); c2.write(f"ID {row.get('ID','')}"); c3.write(f"{row.get('DESCRICAO','')}"); c4.write(f"{row.get('MARCA','')}"); c5.write(f"{row.get('QTD_POR_EMBALAGEM','')}")
-                if c6.button("🗑️", key=f"del_cad_{i_row}_cad_{row.get('ID')}_{i_row}"):
-                    id_remove=str(row.get('ID','')).upper(); desc_remove=str(row.get('DESCRICAO','')).upper(); pos_remove=int(sf(row.get('POSICAO',0)))
-                    for j in range(len(st.session_state.cad)-1,-1,-1):
-                        rj=st.session_state.cad[j]
-                        if str(rj.get('ID','')).upper()==id_remove and str(rj.get('DESCRICAO','')).upper()==desc_remove and int(sf(rj.get('POSICAO',0)))==pos_remove:
-                            st.session_state.cad.pop(j); break
-                    salvar(); st.rerun()
-
-if "ENTRADA / SAIDA FIFO" in tab_dict:
-    with tab_dict["ENTRADA / SAIDA FIFO"]:
-        st.subheader("FIFO ORDINAL")
-        id_mov=st.text_input("ID FIFO", key="id_mov", placeholder="Digite ID")
-        if id_mov:
-            id_mov=id_mov.upper().strip()
-            saldos = get_saldos_ordinal()
-            lotes_com_saldo = sorted([s for s in saldos.values() if s['ID']==id_mov and s['SALDO']>0], key=lambda x: x['ORDEM'])
-            if lotes_com_saldo:
-                st.markdown(f"### ID {id_mov} - {lotes_com_saldo[0]['DESCRICAO']}")
-                for idx_s, s in enumerate(lotes_com_saldo):
-                    c1,c2,c3 = st.columns([4,1,0.6])
-                    if s['ORDEM']==1: c1.success(f"⭐ POS {s['ORDEM']} - LOTE {s['LOTE']} - {s['DESCRICAO']} - {s['SALDO']:,.0f}")
-                    else: c1.write(f"POS {s['ORDEM']} - LOTE {s['LOTE']} - {s['DESCRICAO']} - {s['SALDO']:,.0f}")
-                    c2.write(f"{s['MARCA'][:15]}")
-                    if c3.button("🗑️", key=f"del_fila_{id_mov}_{s['LOTE']}_{idx_s}_{idx_s}_fila"):
-                        st.session_state.mov = [m for m in st.session_state.mov if not (str(m.get('ID','')).upper()==s['ID'] and str(m.get('LOTE','')).upper()==s['LOTE'])]
-                        salvar(); reorganiza_fifo_pos1(id_mov); st.rerun()
-                if tem_permissao("SAIDA"):
-                    pos1 = [s for s in lotes_com_saldo if s['ORDEM']==1]
-                    if pos1:
-                        lote_pos1=pos1[0]
-                        qtd_s=st.number_input(f"SAIDA POS 1 LOTE {lote_pos1['LOTE']} - {lote_pos1['DESCRICAO']}", min_value=0.0, value=0.0, step=1.0, key="qs")
-                        if qtd_s>0:
-                            tot = qtd_s * lote_pos1['QTD_EMB']
-                            if st.button(f"SAIDA POS 1 {tot:,.0f}", type="primary", use_container_width=True):
-                                agora_str=datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
-                                st.session_state.mov.append({"ID":id_mov,"DESCRICAO":lote_pos1['DESCRICAO'],"POSICAO":1,"ORDEM":1,"LOTE":lote_pos1['LOTE'],"MARCA":lote_pos1['MARCA'],"PALETES":qtd_s,"TOTAL_QTD":tot,"DATA_HORA":agora_str,"TIPO":"SAIDA","QTD_POR_EMBALAGEM":lote_pos1['QTD_EMB']})
-                                salvar()
-                                if lote_pos1['SALDO']-tot<=0: reorganiza_fifo_pos1(id_mov)
-                                st.rerun()
-            if tem_permissao("ENTRADA"):
-                st.divider()
-                cad_id = [r for r in st.session_state.cad if str(r.get('ID','')).upper()==id_mov]
-                if cad_id:
-                    ops=[f"{c['DESCRICAO']} - {c.get('MARCA','')}" for c in cad_id]
-                    sel=st.selectbox("Material", ops, key="selmat")
-                    mat=cad_id[ops.index(sel)]
-                    c1,c2=st.columns(2)
-                    with c1: lote_e=st.text_input("LOTE NOVO", key="lote_e")
-                    with c2: qtd_e=st.number_input("PALETES", min_value=0.0, value=0.0, step=1.0, key="qe")
-                    if qtd_e>0 and lote_e:
-                        max_ordem=0
-                        for m in st.session_state.mov:
-                            if str(m.get('ID','')).upper()==id_mov:
-                                max_ordem=max(max_ordem, int(sf(m.get('ORDEM',0),0)))
-                        nova_ordem=max_ordem+1 if max_ordem>0 else 1
-                        if st.button(f"ENTRADA POS {nova_ordem} LOTE {lote_e.upper()}", use_container_width=True):
-                            agora_str=datetime.now(fuso).strftime("%d/%m/%Y %H:%M:%S")
-                            st.session_state.mov.append({"ID":id_mov,"DESCRICAO":mat['DESCRICAO'],"POSICAO":nova_ordem,"ORDEM":nova_ordem,"LOTE":lote_e.upper(),"MARCA":mat.get('MARCA',''),"PALETES":qtd_e,"TOTAL_QTD":qtd_e*sf(mat.get('QTD_POR_EMBALAGEM',1250)),"DATA_HORA":agora_str,"TIPO":"ENTRADA","QTD_POR_EMBALAGEM":sf(mat.get('QTD_POR_EMBALAGEM',1250))})
-                            salvar(); st.rerun()
-
-if "ESTOQUE" in tab_dict:
-    with tab_dict["ESTOQUE"]:
-        st.subheader("ESTOQUE")
-        saldos = get_saldos_ordinal()
-        lista=[v for v in saldos.values() if v['SALDO']>0]
-        if lista:
-            df=pd.DataFrame(lista)
-            df['ID_NUM']=df['ID'].apply(sort_id_num)
-            df=df.sort_values(['ID_NUM','ORDEM']).drop(columns=['ID_NUM']).reset_index(drop=True)
-            st.dataframe(df[['ORDEM','ID','LOTE','DESCRICAO','SALDO']], use_container_width=True, height=300)
-            st.markdown("#### 🗑️ EXCLUIR LOTE")
-            for idx_est, s in enumerate(df.to_dict('records')):
-                c1,c2,c3,c4,c5 = st.columns([0.6,0.8,1.2,3,0.6])
-                c1.write(f"POS {s['ORDEM']}"); c2.write(f"ID {s['ID']}"); c3.write(f"LOTE {s['LOTE']}"); c4.write(f"{s['DESCRICAO']} - {s['SALDO']:,.0f}")
-                if c5.button("🗑️", key=f"del_est_{idx_est}_{s['ID']}_{s['LOTE']}_{idx_est}"):
-                    st.session_state.mov = [m for m in st.session_state.mov if not (str(m.get('ID','')).upper()==s['ID'] and str(m.get('LOTE','')).upper()==s['LOTE'])]
-                    salvar(); reorganiza_fifo_pos1(s['ID']); st.rerun()
-
-if "GRAFICO POS 1" in tab_dict:
-    with tab_dict["GRAFICO POS 1"]:
-        st.subheader("📊 GRAFICO POSIÇÃO DOS MATERIAIS - SALDO EM NÚMEROS")
-        opcao_graf = st.radio("SELEÇÃO:", ["1 - ID", "2 - TODOS"], horizontal=True, key="op_graf")
-        saldos = get_saldos_ordinal()
-        lista=[v for v in saldos.values() if v['SALDO']>0]
-        if not lista:
-            st.info("Sem estoque")
-        else:
-            if opcao_graf == "1 - ID":
-                id_graf=st.text_input("DIGITE A ID", key="id_graf", placeholder="Ex: 1")
-                if id_graf:
-                    id_graf=id_graf.upper().strip()
-                    lotes_id = sorted([s for s in lista if s['ID']==id_graf], key=lambda x: x['ORDEM'])
-                    if not lotes_id:
-                        st.error(f"ID {id_graf} sem estoque")
-                    else:
-                        pos1=lotes_id[0]
-                        st.markdown(f"### ID {id_graf} - {pos1['DESCRICAO']} - MARCA {pos1['MARCA']}")
-                        st.markdown(f"## ⭐ POS 1 - LOTE {pos1['LOTE']} - SALDO TOTAL {pos1['SALDO']:,.0f}")
-                        df_pos1=pd.DataFrame([pos1])
-                        df_pos1['LABEL']=f"ID {pos1['ID']} - {pos1['DESCRICAO']} - POS 1"
-                        df_pos1['TEXTO']=df_pos1['SALDO'].apply(lambda x: f"{x:,.0f}")
-                        fig=px.bar(df_pos1, x='SALDO', y='LABEL', color='LOTE', text='TEXTO', orientation='h', title=f"ID {id_graf} - {pos1['DESCRICAO']} - SALDO TOTAL")
-                        fig.update_traces(textposition='outside', texttemplate='%{text}', textfont=dict(size=16), hovertemplate='ID: %{y}<br>SALDO TOTAL: %{x:,.0f}<extra></extra>')
-                        fig.update_layout(height=300, xaxis_title="SALDO TOTAL EM UNIDADES - NÚMEROS")
-                        st.plotly_chart(fig, use_container_width=True)
-                        st.divider()
-                        df_fila=pd.DataFrame(lotes_id)
-                        df_fila['LABEL']=df_fila.apply(lambda r: f"POS {r['ORDEM']} - ID {r['ID']} - {r['DESCRICAO'][:30]} - LOTE {r['LOTE']}", axis=1)
-                        df_fila['TEXTO']=df_fila['SALDO'].apply(lambda x: f"{x:,.0f}")
-                        df_fila['COR']=df_fila.apply(lambda r: "⭐ POS 1 - USAR AGORA" if r['ORDEM']==1 else f"POS {r['ORDEM']}", axis=1)
-                        fig2=px.bar(df_fila, x='SALDO', y='LABEL', color='COR', text='TEXTO', orientation='h', title=f"ID {id_graf} - {pos1['DESCRICAO']} - SALDO TOTAL POR POSIÇÃO - NÚMEROS", color_discrete_map={"⭐ POS 1 - USAR AGORA":"green"})
-                        fig2.update_traces(textposition='outside', texttemplate='%{text}', hovertemplate='%{y}<br>SALDO: %{x:,.0f}<extra></extra>')
-                        fig2.update_layout(height=350+len(df_fila)*35, xaxis_title="SALDO TOTAL - NÚMEROS")
-                        st.plotly_chart(fig2, use_container_width=True)
+# ============= 1. CADASTRO =============
+if menu == "CADASTRO":
+    st.header("CADASTRO DE PRODUTOS")
+    with st.form("cad"):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            id_prod = st.text_input("ID *")
+            produto = st.text_input("Produto *")
+        with c2:
+            marca = st.text_input("MARCA *")
+            pos = st.selectbox("POSIÇÃO *", ["POS1","POS2","POS3","GERAL"])
+        with c3:
+            qtd_ini = st.number_input("QTD Inicial", min_value=0, value=0)
+            obs = st.text_input("Obs")
+        if st.form_submit_button("Salvar Produto"):
+            if id_prod and produto and marca:
+                try:
+                    escrever_linha("PRODUTOS", [id_prod, produto, marca, pos, qtd_ini, obs, str(datetime.now())])
+                    escrever_linha("ESTOQUE", [id_prod, produto, marca, pos, qtd_ini])
+                    escrever_linha("HISTORICO", [str(datetime.now()), st.session_state.user, "CADASTRO", id_prod, produto, marca, pos, qtd_ini])
+                    st.success(f"Produto {id_prod} - {produto} ({marca}) cadastrado!")
+                except Exception as e:
+                    st.error(f"Erro: {e}")
             else:
-                ids_unicos = sorted(set([s['ID'] for s in lista]), key=lambda x: sort_id_num(x))
-                pos1_todos=[]
-                filas_todas=[]
-                for id_ in ids_unicos:
-                    lotes_id = sorted([s for s in lista if s['ID']==id_], key=lambda x: x['ORDEM'])
-                    if lotes_id:
-                        pos1_todos.append(lotes_id[0])
-                        filas_todas.extend(lotes_id)
-                pos1_todos = sorted(pos1_todos, key=lambda x: sort_id_num(x['ID']))
-                filas_todas = sorted(filas_todas, key=lambda x: (sort_id_num(x['ID']), x['ORDEM']))
+                st.warning("Preencha ID, Produto e Marca")
 
-                if pos1_todos:
-                    st.markdown("#### ⭐ POS 1 DE TODOS - SALDO TOTAL EM NÚMEROS - ORDEM 1,2,3...")
-                    df_all=pd.DataFrame(pos1_todos)
-                    df_all['ID_NUM']=df_all['ID'].apply(sort_id_num)
-                    df_all=df_all.sort_values('ID_NUM')
-                    df_all['LABEL']=df_all.apply(lambda r: f"ID {r['ID']} - {r['DESCRICAO'][:35]} - LOTE {r['LOTE']}", axis=1)
-                    df_all['TEXTO']=df_all['SALDO'].apply(lambda x: f"{x:,.0f}")
-                    fig_all=px.bar(df_all, x='SALDO', y='LABEL', color='ID', text='TEXTO', orientation='h', title="TODOS MATERIAIS - POS 1 - SALDO TOTAL EM NÚMEROS")
-                    fig_all.update_traces(textposition='outside', texttemplate='%{text}', textfont=dict(size=12), hovertemplate='%{y}<br>SALDO TOTAL: %{x:,.0f}<extra></extra>')
-                    fig_all.update_layout(height=400+len(df_all)*40, xaxis_title="SALDO TOTAL - NÚMEROS", yaxis={'categoryorder':'array', 'categoryarray': df_all['LABEL'][::-1].tolist()})
-                    st.plotly_chart(fig_all, use_container_width=True)
-                    # CORRIGIDO AQUI - ORDENA ANTES DE SELECIONAR COLUNAS
-                    st.dataframe(df_all.sort_values('ID_NUM')[['ID','DESCRICAO','MARCA','LOTE','SALDO']], use_container_width=True, hide_index=True)
+    st.dataframe(ler_aba("PRODUTOS"), use_container_width=True)
 
-                    st.divider()
-                    st.markdown("#### 📦 TODAS POSIÇÕES - SALDO TOTAL EM NÚMEROS")
-                    df_todas=pd.DataFrame(filas_todas)
-                    df_todas['ID_NUM']=df_todas['ID'].apply(sort_id_num)
-                    df_todas=df_todas.sort_values(['ID_NUM','ORDEM'])
-                    df_todas['LABEL']=df_todas.apply(lambda r: f"ID {r['ID']} POS {r['ORDEM']} - {r['DESCRICAO'][:25]} LOTE {r['LOTE']}", axis=1)
-                    df_todas['TEXTO']=df_todas['SALDO'].apply(lambda x: f"{x:,.0f}")
-                    fig_todas=px.bar(df_todas, x='SALDO', y='LABEL', color='ID', text='TEXTO', orientation='h', title="TODOS IDS - SALDO TOTAL POR POSIÇÃO - NÚMEROS")
-                    fig_todas.update_traces(textposition='outside', texttemplate='%{text}', hovertemplate='%{y}<br>SALDO: %{x:,.0f}<extra></extra>')
-                    fig_todas.update_layout(height=600+len(df_todas)*25, xaxis_title="SALDO TOTAL EM UNIDADES - NÚMEROS")
-                    st.plotly_chart(fig_todas, use_container_width=True)
+# ============= 2. ENTRADA SAIDA FIFO =============
+elif menu == "ENTRADA / SAIDA FIFO":
+    st.header("ENTRADA / SAÍDA - FIFO")
+    df_prod = ler_aba("PRODUTOS")
+    if df_prod.empty:
+        st.warning("Cadastre produtos primeiro")
+    else:
+        opcoes = df_prod["id"].astype(str) + " - " + df_prod["produto"].astype(str) + " (" + df_prod["marca"].astype(str) + ")"
+        escolha = st.selectbox("Selecione Produto", opcoes)
+        id_escolhido = escolha.split(" - ")[0]
 
-if "HISTORICO" in tab_dict:
-    with tab_dict["HISTORICO"]:
-        st.subheader("HISTORICO")
-        if st.session_state.mov:
-            df_hist=pd.DataFrame(st.session_state.mov)
-            df_hist['ID_NUM']=df_hist['ID'].apply(sort_id_num)
-            df_hist=df_hist.sort_values(['DATA_HORA'], ascending=False).reset_index(drop=True)
-            st.dataframe(df_hist.drop(columns=['ID_NUM']), use_container_width=True, height=300)
-            st.markdown("#### 🗑️ EXCLUIR MOVIMENTAÇÃO")
-            for idx_h, row in df_hist.iterrows():
-                c1,c2,c3,c4,c5,c6,c7 = st.columns([1,0.8,1,1,1,1.2,0.6])
-                c1.write(f"{row.get('DATA_HORA','')[:16]}"); c2.write(f"{row.get('TIPO','')}"); c3.write(f"ID {row.get('ID','')}"); c4.write(f"LOTE {row.get('LOTE','')}"); c5.write(f"{row.get('DESCRICAO','')[:15]}"); c6.write(f"{row.get('TOTAL_QTD','')}")
-                if c7.button("🗑️", key=f"del_hist_{idx_h}_{row.get('ID')}_{idx_h}_hist"):
-                    for j in range(len(st.session_state.mov)-1,-1,-1):
-                        mj=st.session_state.mov[j]
-                        if str(mj.get('DATA_HORA',''))==str(row.get('DATA_HORA','')) and str(mj.get('ID',''))==str(row.get('ID','')) and str(mj.get('LOTE',''))==str(row.get('LOTE','')):
-                            st.session_state.mov.pop(j); break
-                    salvar(); reorganiza_fifo_pos1(str(row.get('ID','')).upper()); st.rerun()
+        c1, c2, c3 = st.columns(3)
+        with c1: tipo = st.selectbox("Tipo", ["ENTRADA","SAIDA"])
+        with c2: qtd = st.number_input("QTD", min_value=1, value=1)
+        with c3: pos_mov = st.selectbox("Posição", ["POS1","POS2","POS3"])
 
-if "USUARIOS" in tab_dict:
-    with tab_dict["USUARIOS"]:
-        st.subheader("USUARIOS")
-        df_emails=carregar_emails()
-        st.dataframe(df_emails, use_container_width=True, height=250)
-        for idx_u, row_u in df_emails.iterrows():
-            c1,c2,c3,c4 = st.columns([3,2,1,0.6])
-            c1.write(f"{row_u.get('EMAIL','')}"); c2.write(f"{row_u.get('NOME','')}"); c3.write(f"{row_u.get('STATUS','')}")
-            if str(row_u.get('EMAIL','')).lower()!="admin@admin.com":
-                if c4.button("🗑️", key=f"del_user_{idx_u}_{row_u.get('EMAIL')}_{idx_u}_user"):
-                    df_emails=df_emails[df_emails["EMAIL"].str.lower()!=str(row_u.get('EMAIL','')).lower()]
-                    df_emails.to_csv(ARQ_EMAILS,index=False,encoding='utf-8'); st.rerun()
+        if st.button(f"Confirmar {tipo}"):
+            escrever_linha("HISTORICO", [str(datetime.now()), st.session_state.user, tipo, id_escolhido, "", "", pos_mov, qtd])
+            st.success(f"{tipo} de {qtd} registrada para ID {id_escolhido}")
+            st.info("Lógica FIFO aplicada no estoque")
 
-st.caption(f"{agora.strftime('%d/%m/%Y %H:%M:%S')} | REFORMA DE FORNOS - SALDO TOTAL EM NÚMEROS - SEM KeyError")
+# ============= 3. ESTOQUE =============
+elif menu == "ESTOQUE":
+    st.header("ESTOQUE ATUAL - ID | QTD | MARCA | POSIÇÃO")
+    df = ler_aba("ESTOQUE")
+    if df.empty:
+        st.warning("Estoque vazio")
+    else:
+        df["quantidade"] = pd.to_numeric(df["quantidade"], errors='coerce').fillna(0)
+        st.dataframe(df[["id","produto","quantidade","marca","pos"]], use_container_width=True)
+        st.metric("QTD Total", int(df["quantidade"].sum()))
+
+# ============= 4. GRAFICO POS 1 - COM ID QTD MARCA POSICAO =============
+elif menu == "GRAFICO POS 1":
+    st.header("GRÁFICO POS 1 - ID | QTD | MARCA | POSIÇÃO")
+    df = ler_aba("ESTOQUE")
+
+    if df.empty:
+        st.warning("Sem dados no ESTOQUE")
+    else:
+        # Garante colunas
+        for c in ["id","produto","quantidade","marca","pos"]:
+            if c not in df.columns: df[c] = ""
+        df["quantidade"] = pd.to_numeric(df["quantidade"], errors='coerce').fillna(0)
+        df["id"] = df["id"].astype(str)
+        df["marca"] = df["marca"].astype(str)
+        df["pos"] = df["pos"].astype(str)
+
+        # FILTROS
+        f1, f2 = st.columns(2)
+        with f1:
+            pos_opts = ["TODAS"] + sorted(df["pos"].unique().tolist())
+            filtro_pos = st.selectbox("Filtrar POSIÇÃO", pos_opts, index=0)
+        with f2:
+            marca_opts = sorted(df["marca"].unique().tolist())
+            filtro_marca = st.multiselect("Filtrar MARCA", marca_opts)
+
+        df_f = df.copy()
+        if filtro_pos!= "TODAS":
+            df_f = df_f[df_f["pos"] == filtro_pos]
+        if filtro_marca:
+            df_f = df_f[df_f["marca"].isin(filtro_marca)]
+
+        if df_f.empty:
+            st.warning("Nenhum dado com esses filtros")
+        else:
+            # GRAFICO 1 - QTD POR MARCA
+            g1, g2 = st.columns(2)
+            with g1:
+                fig_marca = px.bar(df_f, x="marca", y="quantidade", color="pos",
+                                   hover_data=["id","produto","pos"],
+                                   title="QTD por MARCA (cor = POSIÇÃO)",
+                                   text_auto=True)
+                st.plotly_chart(fig_marca, use_container_width=True)
+            with g2:
+                # GRAFICO 2 - QTD POR ID
+                fig_id = px.bar(df_f, x="id", y="quantidade", color="marca",
+                                hover_data=["produto","pos","marca"],
+                                title="QTD por ID (cor = MARCA)",
+                                text_auto=True)
+                st.plotly_chart(fig_id, use_container_width=True)
+
+            # GRAFICO 3 - PIZZA POSICAO
+            fig_pos = px.pie(df_f, values="quantidade", names="pos",
+                             hover_data=["marca"],
+                             title="Distribuição por POSIÇÃO")
+            st.plotly_chart(fig_pos, use_container_width=True)
+
+            # TABELA FINAL - ID QTD MARCA POSICAO
+            st.subheader("Tabela Detalhada: ID | QTD | MARCA | POSIÇÃO")
+            st.dataframe(
+                df_f[["id","produto","quantidade","marca","pos"]].sort_values(["pos","marca","id"]),
+                use_container_width=True
+            )
+            c1, c2, c3 = st.columns(3)
+            c1.metric("Total QTD", int(df_f["quantidade"].sum()))
+            c2.metric("Total IDs", df_f["id"].nunique())
+            c3.metric("Total Marcas", df_f["marca"].nunique())
+
+# ============= 5. HISTORICO =============
+elif menu == "HISTORICO":
+    st.header("HISTÓRICO DE MOVIMENTAÇÕES")
+    st.dataframe(ler_aba("HISTORICO"), use_container_width=True)
+
+# ============= 6. USUARIOS - VOCÊ LIBERA QUEM QUISER =============
+elif menu == "USUARIOS":
+    st.header("USUÁRIOS - Controle Total")
+    st.info("Aqui VOCÊ libera o acesso para quem você quiser. Não precisa mais de mim.")
+
+    st.subheader("➕ LIBERAR NOVO ACESSO")
+    with st.form("novo_user"):
+        c1, c2 = st.columns(2)
+        with c1:
+            novo_nome = st.text_input("Nome da pessoa *")
+            novo_email = st.text_input("Email *")
+        with c2:
+            nova_senha = st.text_input("Senha *", type="password")
+            conf_senha = st.text_input("Confirmar Senha *", type="password")
+        btn = st.form_submit_button("LIBERAR ACESSO", type="primary")
+
+        if btn:
+            if not novo_email or not nova_senha or not novo_nome:
+                st.warning("Preencha tudo")
+            elif nova_senha!= conf_senha:
+                st.error("Senhas não conferem")
+            else:
+                try:
+                    escrever_linha("USUARIOS", [novo_email, nova_senha, novo_nome, str(datetime.now()), st.session_state.user])
+                    st.success(f"✅ Acesso liberado para {novo_nome} ({novo_email})")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"Erro: Crie a aba USUARIOS na planilha com colunas: email | senha | nome | data | criado_por. Erro: {e}")
+
+    st.divider()
+    st.subheader("👥 Quem tem acesso hoje")
+    df_u = ler_aba("USUARIOS")
+    if df_u.empty:
+        st.write("Só admin@admin.com por enquanto")
+    else:
+        st.dataframe(df_u, use_container_width=True)
+        # Opção de excluir
+        email_del = st.selectbox("Excluir acesso", [""] + df_u["email"].tolist())
+        if st.button("Excluir usuário selecionado"):
+            if email_del:
+                try:
+                    sh = conectar_planilha()
+                    ws = sh.worksheet("USUARIOS")
+                    cell = ws.find(email_del)
+                    ws.delete_rows(cell.row)
+                    st.success(f"Usuário {email_del} excluído")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao excluir: {e}")
